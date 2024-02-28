@@ -3,6 +3,7 @@ import copy
 from collections import OrderedDict
 
 import einops
+import numpy as np
 import torch
 import torch as th
 import torch.nn as nn
@@ -376,24 +377,30 @@ class ControlLDM(LatentDiffusion):
         log["lq"] = c_lq
         log["text"] = (log_txt_as_img((512, 512), batch[self.cond_stage_key], size=16) + 1) / 2
         
+        
         samples = self.sample_log(
             # TODO: remove c_concat from cond
-            cond={"c_concat": [c_cat], "c_crossattn": [c], "c_latent": [c_latent]},
-            steps=sample_steps
+            c_cat,steps=sample_steps
         )
-        x_samples = self.decode_first_stage(samples)
-        log["samples"] = (x_samples + 1) / 2
+        #x_samples = self.decode_first_stage(samples)
+        x_samples = samples.clamp(0, 1)
+        #x_samples = (einops.rearrange(x_samples, "b c h w -> b h w c") * 255).cpu().numpy().clip(0, 255).astype(np.uint8)
+        log["samples"] = x_samples
 
         return log
 
     @torch.no_grad()
-    def sample_log(self, cond, steps):
+    def sample_log(self, control, steps):
         sampler = SpacedSampler(self)
-        b, c, h, w = cond["c_concat"][0].shape
-        shape = (b, self.channels, h // 8, w // 8)
+        height, width = control.size(-2), control.size(-1)
+        n_samples = len(control)
+        shape = (n_samples, 4, height // 8, width // 8)
+        x_T = torch.randn(shape, device=self.device, dtype=torch.float32)
         samples = sampler.sample(
-            steps, shape, cond, unconditional_guidance_scale=1.0,
-            unconditional_conditioning=None
+            steps, shape, cond_img=control,
+            positive_prompt="", negative_prompt="", x_T=x_T,
+            cfg_scale=1.0, cond_fn=None,
+            color_fix_type='wavelet'
         )
         return samples
 

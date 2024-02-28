@@ -53,7 +53,7 @@ class CodeformerDataset(data.Dataset):
         success = False
         for _ in range(3):
             try:
-                pil_img = Image.open(gt_path).convert("RGB")
+                pil_img = Image.open(gt_path).convert("RGB").resize((512,512),Image.BICUBIC)
                 success = True
                 break
             except:
