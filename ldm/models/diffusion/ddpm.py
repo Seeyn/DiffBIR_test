@@ -900,8 +900,8 @@ class LatentDiffusion(DDPM):
         noise = default(noise, lambda: torch.randn_like(x_start))
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
         model_output = self.apply_model(x_noisy, t, cond)
-        model_output = self.decode_first_stage(self.predict_start_from_noise(x_noisy,t,model_output))
-        print(model_output.shape)
+        model_output = self.predict_start_from_noise(x_noisy,t,model_output)
+        #print(model_output.shape)  3,512,512
 
                                                
         loss_dict = {}
@@ -915,8 +915,8 @@ class LatentDiffusion(DDPM):
             target = self.get_v(x_start, noise, t)
         else:
             raise NotImplementedError()
-
-        loss_simple = self.get_loss(model_output, self.decode_first_stage(x_start), mean=False).mean([1, 2, 3])
+        target = x_start
+        loss_simple = self.get_loss(model_output, target, mean=False).mean([1, 2, 3])
         loss_dict.update({f'{prefix}/loss_simple': loss_simple.mean()})
 
         logvar_t = self.logvar[t].to(self.device)

@@ -16,7 +16,7 @@ dataset:
     jpeg_range: [60, 100]
 
 data_loader:
-  batch_size: 4
+  batch_size: 1
   shuffle: true
   num_workers: 16
   drop_last: true
