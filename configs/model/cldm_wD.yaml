@@ -1,4 +1,4 @@
-target: model.cldm.ControlLDM
+target: model.cldm.ControlLDMwDiscriminator
 params:
   linear_start: 0.00085
   linear_end: 0.0120
