@@ -21,7 +21,9 @@ from ldm.util import log_txt_as_img, exists, instantiate_from_config
 from ldm.modules.distributions.distributions import DiagonalGaussianDistribution
 from utils.common import frozen_module
 from .spaced_sampler import SpacedSampler
-
+from ldm.util import log_txt_as_img, exists, default, ismap, isimage, mean_flat, count_params, instantiate_from_config
+from taming.modules.losses.vqperceptual import * 
+from basicsr.losses.gan_loss import *
 
 class ControlledUnetModel(UNetModel):
     def forward(self, x, timesteps=None, context=None, control=None, only_mid_control=False, **kwargs):
@@ -416,3 +418,296 @@ class ControlLDM(LatentDiffusion):
     def validation_step(self, batch, batch_idx):
         # TODO: 
         pass
+
+
+class ControlLDMwDiscriminator(LatentDiffusion):
+
+    def __init__(
+        self,
+        control_stage_config: Mapping[str, Any],
+        control_key: str,
+        sd_locked: bool,
+        only_mid_control: bool,
+        learning_rate: float,
+        preprocess_config,
+        *args,
+        **kwargs
+    ) -> "ControlLDMwDiscriminator":
+        super().__init__(*args, **kwargs)
+        # instantiate control module
+        self.control_model: ControlNet = instantiate_from_config(control_stage_config)
+        self.control_key = control_key
+        self.sd_locked = sd_locked
+        self.only_mid_control = only_mid_control
+        self.learning_rate = learning_rate
+        self.control_scales = [1.0] * 13
+        self.discriminator = NLayerDiscriminator(input_nc=4,
+                                                 n_layers=3,
+                                                 use_actnorm=False
+                                                 ).apply(weights_init)
+        self.ganloss = GANLoss('wgan_softplus',loss_weight = 0.1)
+        # instantiate preprocess module (SwinIR)
+        self.current_iter = 0
+        self.preprocess_model = instantiate_from_config(preprocess_config)
+        frozen_module(self.preprocess_model)
+        
+        # instantiate condition encoder, since our condition encoder has the same 
+        # structure with AE encoder, we just make a copy of AE encoder. please
+        # note that AE encoder's parameters has not been initialized here.
+        self.cond_encoder = nn.Sequential(OrderedDict([
+            ("encoder", copy.deepcopy(self.first_stage_model.encoder)), # cond_encoder.encoder
+            ("quant_conv", copy.deepcopy(self.first_stage_model.quant_conv)) # cond_encoder.quant_conv
+        ]))
+        frozen_module(self.cond_encoder)
+
+
+
+    def apply_condition_encoder(self, control):
+        c_latent_meanvar = self.cond_encoder(control * 2 - 1)
+        c_latent = DiagonalGaussianDistribution(c_latent_meanvar).mode() # only use mode
+        c_latent = c_latent * self.scale_factor
+        return c_latent
+    
+    @torch.no_grad()
+    def get_input(self, batch, k, bs=None, *args, **kwargs):
+        x, c = super().get_input(batch, self.first_stage_key, *args, **kwargs)
+        control = batch[self.control_key]
+        if bs is not None:
+            control = control[:bs]
+        control = control.to(self.device)
+        control = einops.rearrange(control, 'b h w c -> b c h w')
+        control = control.to(memory_format=torch.contiguous_format).float()
+        lq = control
+        # apply preprocess model
+        control = self.preprocess_model(control)
+        # apply condition encoder
+        c_latent = self.apply_condition_encoder(control)
+        return x, dict(c_crossattn=[c], c_latent=[c_latent], lq=[lq], c_concat=[control])
+
+    def apply_model(self, x_noisy, t, cond, *args, **kwargs):
+        assert isinstance(cond, dict)
+        diffusion_model = self.model.diffusion_model
+
+        cond_txt = torch.cat(cond['c_crossattn'], 1)
+
+        if cond['c_latent'] is None:
+            eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=None, only_mid_control=self.only_mid_control)
+        else:
+            control = self.control_model(
+                x=x_noisy, hint=torch.cat(cond['c_latent'], 1),
+                timesteps=t, context=cond_txt
+            )
+            control = [c * scale for c, scale in zip(control, self.control_scales)]
+            eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
+
+        return eps
+
+    @torch.no_grad()
+    def get_unconditional_conditioning(self, N):
+        return self.get_learned_conditioning([""] * N)
+
+    @torch.no_grad()
+    def log_images(self, batch, sample_steps=50):
+        log = dict()
+        z, c = self.get_input(batch, self.first_stage_key)
+        c_lq = c["lq"][0]
+        c_latent = c["c_latent"][0]
+        c_cat, c = c["c_concat"][0], c["c_crossattn"][0]
+
+        log["hq"] = (self.decode_first_stage(z) + 1) / 2
+        log["control"] = c_cat
+        log["decoded_control"] = (self.decode_first_stage(c_latent) + 1) / 2
+        log["lq"] = c_lq
+        log["text"] = (log_txt_as_img((512, 512), batch[self.cond_stage_key], size=16) + 1) / 2
+        
+        
+        samples = self.sample_log(
+            # TODO: remove c_concat from cond
+            c_cat,steps=sample_steps
+        )
+        #x_samples = self.decode_first_stage(samples)
+        x_samples = samples.clamp(0, 1)
+        #x_samples = (einops.rearrange(x_samples, "b c h w -> b h w c") * 255).cpu().numpy().clip(0, 255).astype(np.uint8)
+        log["samples"] = x_samples
+
+        return log
+
+    @torch.no_grad()
+    def sample_log(self, control, steps):
+        sampler = SpacedSampler(self)
+        height, width = control.size(-2), control.size(-1)
+        n_samples = len(control)
+        shape = (n_samples, 4, height // 8, width // 8)
+        x_T = torch.randn(shape, device=self.device, dtype=torch.float32)
+        samples = sampler.sample(
+            steps, shape, cond_img=control,
+            positive_prompt="", negative_prompt="", x_T=x_T,
+            cfg_scale=1.0, cond_fn=None,
+            color_fix_type='wavelet'
+        )
+        return samples
+
+    def configure_optimizers(self):
+        lr = self.learning_rate
+        params = list(self.control_model.parameters())
+        if not self.sd_locked:
+            params += list(self.model.diffusion_model.output_blocks.parameters())
+            params += list(self.model.diffusion_model.out.parameters())
+        opt = torch.optim.AdamW(params, lr=lr)
+        opt_d = torch.optim.AdamW(self.discriminator.parameters(), lr=lr)
+        return [opt,opt_d], []
+
+    def validation_step(self, batch, batch_idx):
+        # TODO: 
+        pass
+    
+    def training_step(self, batch, batch_idx,optimizer_idx):
+        '''get data'''
+        self.current_iter = batch_idx
+        for k in self.ucg_training:
+            p = self.ucg_training[k]["p"]
+            val = self.ucg_training[k]["val"]
+            if val is None:
+                val = ""
+            for i in range(len(batch[k])):
+                if self.ucg_prng.choice(2, p=[1 - p, p]):
+                    batch[k][i] = val
+
+        loss, loss_dict = self.shared_step(batch,optimizer_idx)
+        
+        self.log_dict(loss_dict, prog_bar=True,
+                      logger=True, on_step=True, on_epoch=True)
+
+        self.log("global_step", self.global_step,
+                 prog_bar=True, logger=True, on_step=True, on_epoch=False)
+
+        if self.use_scheduler:
+            lr = self.optimizers().param_groups[0]['lr']
+            self.log('lr_abs', lr, prog_bar=True, logger=True, on_step=True, on_epoch=False)
+
+        return loss
+    
+    def shared_step(self, batch,optimizer_idx,**kwargs):
+        x, c = self.get_input(batch, self.first_stage_key)
+        loss = self(x, c,optimizer_idx)
+        return loss
+    
+
+    def forward(self, x, c, optimizer_idx,*args, **kwargs):
+        if optimizer_idx == 0:
+            t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=self.device).long()
+            if self.model.conditioning_key is not None:
+                assert c is not None
+                if self.cond_stage_trainable:
+                    c = self.get_learned_conditioning(c)
+                if self.shorten_cond_schedule:  # TODO: drop this option
+                    tc = self.cond_ids[t].to(self.device)
+                    c = self.q_sample(x_start=c, t=tc, noise=torch.randn_like(c.float()))
+
+            loss, loss_dict = self.p_losses(x, c, t, *args, **kwargs)
+
+            t = torch.randint(0, 200 (x.shape[0],), device=self.device).long()
+            if self.model.conditioning_key is not None:
+                assert c is not None
+                if self.cond_stage_trainable:
+                    c = self.get_learned_conditioning(c)
+                if self.shorten_cond_schedule:  # TODO: drop this option
+                    tc = self.cond_ids[t].to(self.device)
+                    c = self.q_sample(x_start=c, t=tc, noise=torch.randn_like(c.float()))
+            loss_, loss_dict_ =  self.d_losses(x,c,t,noise=None,optimize_d=False)
+            loss += loss_
+            loss_dict.update(loss_dict_)
+
+        else:
+            t = torch.randint(0, 200 (x.shape[0],), device=self.device).long()
+            if self.model.conditioning_key is not None:
+                assert c is not None
+                if self.cond_stage_trainable:
+                    c = self.get_learned_conditioning(c)
+                if self.shorten_cond_schedule:  # TODO: drop this option
+                    tc = self.cond_ids[t].to(self.device)
+                    c = self.q_sample(x_start=c, t=tc, noise=torch.randn_like(c.float()))
+            loss, loss_dict =  self.d_losses(x,c,t,noise=None,optimize_d=True)
+            
+
+        return loss,loss_dict
+
+     
+    
+    def d_losses(self, x_start, cond, t, noise=None, optimize_d = False):
+        noise = default(noise, lambda: torch.randn_like(x_start))
+        x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
+        model_output = self.apply_model(x_noisy, t, cond)
+        model_output = self.predict_start_from_noise(x_noisy,t,model_output)
+        
+        target = x_start
+        loss_dict = {}
+        prefix = 'train' if self.training else 'val'
+
+        if optimize_d:
+            fake_d_pred = self.discriminator(model_output.detach())
+            real_d_pred = self.discriminator(target)
+            l_d = self.gan_loss(real_d_pred, True, is_disc=True) + self.gan_loss(fake_d_pred, False, is_disc=True)
+            loss_dict['l_d'] = l_d
+            # In WGAN, real_score should be positive and fake_score should be negative
+            loss_dict['real_score'] = real_d_pred.detach().mean()
+            loss_dict['fake_score'] = fake_d_pred.detach().mean()
+
+            if self.current_iter % 16 == 0:
+                target.requires_grad = True
+                real_pred = self.discriminator(target)
+                l_d_r1 = r1_penalty(real_pred, target)
+                l_d_r1 = (10. / 2 * l_d_r1 * 16 + 0 * real_pred[0])
+                loss_dict['l_d_r1'] = l_d_r1.detach().mean()
+                l_d += l_d_r1
+
+            return l_d, loss_dict
+        
+        else:
+            fake_g_pred = self.discriminator(model_output)
+            l_g_gan = self.ganloss(fake_g_pred,True, is_disc = False)
+            loss_dict['l_g_gan'] = l_g_gan
+
+            return l_g_gan, loss_dict
+    
+
+    
+    def p_losses(self, x_start, cond, t, noise=None):
+        noise = default(noise, lambda: torch.randn_like(x_start))
+        x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
+        model_output = self.apply_model(x_noisy, t, cond)
+        # model_output = self.predict_start_from_noise(x_noisy,t,model_output)
+        #print(model_output.shape)  3,512,512
+
+                                               
+        loss_dict = {}
+        prefix = 'train' if self.training else 'val'
+
+        if self.parameterization == "x0":
+            target = x_start
+        elif self.parameterization == "eps":
+            target = noise
+        elif self.parameterization == "v":
+            target = self.get_v(x_start, noise, t)
+        else:
+            raise NotImplementedError()
+        # target = x_start
+        loss_simple = self.get_loss(model_output, target, mean=False).mean([1, 2, 3])
+        loss_dict.update({f'{prefix}/loss_simple': loss_simple.mean()})
+
+        logvar_t = self.logvar[t].to(self.device)
+        loss = loss_simple / torch.exp(logvar_t) + logvar_t
+        # loss = loss_simple / torch.exp(self.logvar) + self.logvar
+        if self.learn_logvar:
+            loss_dict.update({f'{prefix}/loss_gamma': loss.mean()})
+            loss_dict.update({'logvar': self.logvar.data.mean()})      
+
+        loss = self.l_simple_weight * loss.mean()
+
+        loss_vlb = self.get_loss(model_output, target, mean=False).mean(dim=(1, 2, 3))
+        loss_vlb = (self.lvlb_weights[t] * loss_vlb).mean()
+        loss_dict.update({f'{prefix}/loss_vlb': loss_vlb})
+        loss += (self.original_elbo_weight * loss_vlb)
+        loss_dict.update({f'{prefix}/loss': loss})
+
+        return loss, loss_dict
