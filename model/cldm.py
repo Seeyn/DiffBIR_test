@@ -445,7 +445,7 @@ class ControlLDMwDiscriminator(LatentDiffusion):
                                                  n_layers=3,
                                                  use_actnorm=False
                                                  ).apply(weights_init)
-        self.ganloss = GANLoss('wgan_softplus',loss_weight = 0.1)
+        self.gan_loss = GANLoss('wgan_softplus',loss_weight = 0.1)
         # instantiate preprocess module (SwinIR)
         self.current_iter = 0
         self.preprocess_model = instantiate_from_config(preprocess_config)
@@ -606,7 +606,7 @@ class ControlLDMwDiscriminator(LatentDiffusion):
 
             loss, loss_dict = self.p_losses(x, c, t, *args, **kwargs)
 
-            t = torch.randint(0, 200 (x.shape[0],), device=self.device).long()
+            t = torch.randint(0, 200, (x.shape[0],), device=self.device).long()
             if self.model.conditioning_key is not None:
                 assert c is not None
                 if self.cond_stage_trainable:
@@ -619,7 +619,7 @@ class ControlLDMwDiscriminator(LatentDiffusion):
             loss_dict.update(loss_dict_)
 
         else:
-            t = torch.randint(0, 200 (x.shape[0],), device=self.device).long()
+            t = torch.randint(0, 200, (x.shape[0],), device=self.device).long()
             if self.model.conditioning_key is not None:
                 assert c is not None
                 if self.cond_stage_trainable:
@@ -652,7 +652,7 @@ class ControlLDMwDiscriminator(LatentDiffusion):
             # In WGAN, real_score should be positive and fake_score should be negative
             loss_dict['real_score'] = real_d_pred.detach().mean()
             loss_dict['fake_score'] = fake_d_pred.detach().mean()
-
+            '''
             if self.current_iter % 16 == 0:
                 target.requires_grad = True
                 real_pred = self.discriminator(target)
@@ -660,12 +660,12 @@ class ControlLDMwDiscriminator(LatentDiffusion):
                 l_d_r1 = (10. / 2 * l_d_r1 * 16 + 0 * real_pred[0])
                 loss_dict['l_d_r1'] = l_d_r1.detach().mean()
                 l_d += l_d_r1
-
+            '''
             return l_d, loss_dict
         
         else:
             fake_g_pred = self.discriminator(model_output)
-            l_g_gan = self.ganloss(fake_g_pred,True, is_disc = False)
+            l_g_gan = self.gan_loss(fake_g_pred,True, is_disc = False)
             loss_dict['l_g_gan'] = l_g_gan
 
             return l_g_gan, loss_dict

@@ -33,7 +33,7 @@ def parse_args() -> Namespace:
     # model
     # Specify the model ckpt path, and the official model can be downloaded direclty.
     parser.add_argument("--ckpt", type=str, help='Model checkpoint.', default='weights/face_full_v1.ckpt')
-    parser.add_argument("--config", type=str, default='configs/model/cldm.yaml', help='Model config file.')
+    parser.add_argument("--config", type=str, default='configs/model/cldm_wD.yaml', help='Model config file.')
     parser.add_argument("--reload_swinir", action="store_true")
     parser.add_argument("--swinir_ckpt", type=str, default=None)
 
@@ -53,7 +53,7 @@ def parse_args() -> Namespace:
                 Default: retinaface_resnet50')
 
     # Loading two DiffBIR models requires huge GPU memory capacity. Choose RealESRGAN as an alternative.
-    parser.add_argument('--bg_upsampler', type=str, default='RealESRGAN', choices=['DiffBIR', 'RealESRGAN'], help='Background upsampler.')
+    parser.add_argument('--bg_upsampler', type=str, default='None', choices=['DiffBIR', 'RealESRGAN'], help='Background upsampler.')
     # TODO: support tiled for DiffBIR background upsampler
     parser.add_argument('--bg_tile', type=int, default=400, help='Tile size for background sampler.')
     parser.add_argument('--bg_tile_stride', type=int, default=200, help='Tile stride for background sampler.')
@@ -90,7 +90,8 @@ def build_diffbir_model(model_config, ckpt, swinir_ckpt=None):
         ckpt_url = pretrained_models['face_v1']['ckpt_url']
     else:
         # define a custom diffbir model
-        raise NotImplementedError('undefined diffbir model type!')
+        #raise NotImplementedError('undefined diffbir model type!')
+        pass
     
     if not os.path.exists(ckpt):
         ckpt = load_file_from_url(ckpt_url, weight_root)

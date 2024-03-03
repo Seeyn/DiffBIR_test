@@ -537,7 +537,7 @@ class SpacedSampler:
                 cfg_scale=cfg_scale, uncond=uncond,
                 cond_fn=cond_fn
             )
-        
+         
         img_pixel = (self.model.decode_first_stage(img) + 1) / 2
         # apply color correction (borrowed from StableSR)
         if color_fix_type == "adain":

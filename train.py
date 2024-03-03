@@ -19,7 +19,7 @@ def main() -> None:
     model = instantiate_from_config(OmegaConf.load(config.model.config))
     # TODO: resume states saved in checkpoint.
     if config.model.get("resume"):
-        load_state_dict(model, torch.load(config.model.resume, map_location="cpu"), strict=True)
+        load_state_dict(model, torch.load(config.model.resume, map_location="cpu"), strict=False)
     
     callbacks = []
     for callback_config in config.lightning.callbacks:
