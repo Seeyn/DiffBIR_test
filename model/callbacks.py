@@ -41,11 +41,12 @@ class ImageLogger(Callback):
         assert isinstance(pl_module, ImageLoggerMixin)
 
     @rank_zero_only
-    def on_train_batch_end(
+    def on_validation_batch_end(
         self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs: STEP_OUTPUT,
         batch: Any, batch_idx: int, dataloader_idx: int
     ) -> None:
-        if pl_module.global_step % self.log_every_n_steps == 0:
+        print(pl_module.global_step)
+        if (pl_module.global_step+1) % self.log_every_n_steps == 0 or pl_module.global_step==1:
             is_train = pl_module.training
             if is_train:
                 pl_module.freeze()

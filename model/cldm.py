@@ -606,7 +606,8 @@ class ControlLDMwDiscriminator(LatentDiffusion):
 
             loss, loss_dict = self.p_losses(x, c, t, *args, **kwargs)
 
-            t = torch.randint(0, 200, (x.shape[0],), device=self.device).long()
+            #t = torch.randint(0, 200, (x.shape[0],), device=self.device).long()
+            t = torch.zeros((x.shape[0],),device=self.device).long() + 200
             if self.model.conditioning_key is not None:
                 assert c is not None
                 if self.cond_stage_trainable:
@@ -619,7 +620,9 @@ class ControlLDMwDiscriminator(LatentDiffusion):
             loss_dict.update(loss_dict_)
 
         else:
-            t = torch.randint(0, 200, (x.shape[0],), device=self.device).long()
+            #t = torch.randint(0, 200, (x.shape[0],), device=self.device).long()
+            t = torch.zeros((x.shape[0],),device=self.device).long() + 200
+
             if self.model.conditioning_key is not None:
                 assert c is not None
                 if self.cond_stage_trainable:
@@ -638,6 +641,7 @@ class ControlLDMwDiscriminator(LatentDiffusion):
         noise = default(noise, lambda: torch.randn_like(x_start))
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
         model_output = self.apply_model(x_noisy, t, cond)
+        model_output_ = model_output
         model_output = self.predict_start_from_noise(x_noisy,t,model_output)
         
         target = x_start
@@ -652,23 +656,45 @@ class ControlLDMwDiscriminator(LatentDiffusion):
             # In WGAN, real_score should be positive and fake_score should be negative
             loss_dict['real_score'] = real_d_pred.detach().mean()
             loss_dict['fake_score'] = fake_d_pred.detach().mean()
-            '''
+            
             if self.current_iter % 16 == 0:
                 target.requires_grad = True
                 real_pred = self.discriminator(target)
                 l_d_r1 = r1_penalty(real_pred, target)
                 l_d_r1 = (10. / 2 * l_d_r1 * 16 + 0 * real_pred[0])
                 loss_dict['l_d_r1'] = l_d_r1.detach().mean()
-                l_d += l_d_r1
-            '''
+                #print(l_d_r1.shape,l_d.shape)
+                l_d += l_d_r1.mean()
+
+            
             return l_d, loss_dict
         
         else:
+
             fake_g_pred = self.discriminator(model_output)
             l_g_gan = self.gan_loss(fake_g_pred,True, is_disc = False)
             loss_dict['l_g_gan'] = l_g_gan
 
-            return l_g_gan, loss_dict
+            loss_simple = self.get_loss(model_output_, noise, mean=False).mean([1, 2, 3])
+            loss_dict.update({f'{prefix}/loss_simple': loss_simple.mean()})
+
+            logvar_t = self.logvar[t].to(self.device)
+            loss = loss_simple / torch.exp(logvar_t) + logvar_t
+            # loss = loss_simple / torch.exp(self.logvar) + self.logvar
+            if self.learn_logvar:
+                loss_dict.update({f'{prefix}/loss_gamma': loss.mean()})
+                loss_dict.update({'logvar': self.logvar.data.mean()})
+
+            loss = self.l_simple_weight * loss.mean()
+
+            loss_vlb = self.get_loss(model_output_, noise, mean=False).mean(dim=(1, 2, 3))
+            loss_vlb = (self.lvlb_weights[t] * loss_vlb).mean()
+            loss_dict.update({f'{prefix}/loss_vlb': loss_vlb})
+            loss += (self.original_elbo_weight * loss_vlb)
+            loss_dict.update({f'{prefix}/loss': loss})
+            loss += l_g_gan
+
+            return loss, loss_dict
     
 
     
