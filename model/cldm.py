@@ -550,6 +550,7 @@ class ControlLDMwDiscriminator(LatentDiffusion):
     def configure_optimizers(self):
         lr = self.learning_rate
         params = list(self.control_model.parameters())
+        print(self.sd_locked)
         if not self.sd_locked:
             params += list(self.model.diffusion_model.output_blocks.parameters())
             params += list(self.model.diffusion_model.out.parameters())
@@ -606,8 +607,8 @@ class ControlLDMwDiscriminator(LatentDiffusion):
 
             loss, loss_dict = self.p_losses(x, c, t, *args, **kwargs)
 
-            #t = torch.randint(0, 200, (x.shape[0],), device=self.device).long()
-            t = torch.zeros((x.shape[0],),device=self.device).long() + 200
+            t = torch.randint(0, 300, (x.shape[0],), device=self.device).long()
+            #t = torch.zeros((x.shape[0],),device=self.device).long() + 200
             if self.model.conditioning_key is not None:
                 assert c is not None
                 if self.cond_stage_trainable:
@@ -620,8 +621,8 @@ class ControlLDMwDiscriminator(LatentDiffusion):
             loss_dict.update(loss_dict_)
 
         else:
-            #t = torch.randint(0, 200, (x.shape[0],), device=self.device).long()
-            t = torch.zeros((x.shape[0],),device=self.device).long() + 200
+            t = torch.randint(0, 300, (x.shape[0],), device=self.device).long()
+            #t = torch.zeros((x.shape[0],),device=self.device).long() + 200
 
             if self.model.conditioning_key is not None:
                 assert c is not None

@@ -22,7 +22,7 @@ lightning:
     # Indices of GPUs used for training.
     gpus: [0]
     # Path to save logs and checkpoints.
-    default_root_dir: /lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/reproduction_addAdv_x0_200fix_wr_lossmodified_extenddata_extreme
+    default_root_dir: /lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/reproduction_addAdv_x0_300unfix_wr_lossmodified_extenddata_extreme
     # Max number of training steps (batches).
     max_steps: 25001
     # Validation frequency in terms of training steps.
@@ -32,12 +32,12 @@ lightning:
     accumulate_grad_batches: 1
   
   callbacks:
-          #- target: model.callbacks.ImageLogger
-          #params:
-        # Log frequency of image logger.
-        #log_every_n_steps: 500
-        #max_images_each_step: 4
-        #log_images_kwargs: ~
+    - target: model.callbacks.ImageLogger
+      params:
+                #Log frequency of image logger.
+        log_every_n_steps: 500
+        max_images_each_step: 4
+        log_images_kwargs: ~
 
     - target: model.callbacks.ModelCheckpoint
       params:

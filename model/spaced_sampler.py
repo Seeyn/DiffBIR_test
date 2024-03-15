@@ -263,7 +263,6 @@ class SpacedSampler:
             model_cond = self.model.apply_model(x, t, cond)
             model_uncond = self.model.apply_model(x, t, uncond)
             model_output = model_uncond + cfg_scale * (model_cond - model_uncond)
-        
         if self.model.parameterization == "v":
             e_t = self.model.predict_eps_from_z_and_v(x, t, model_output)
         else:
