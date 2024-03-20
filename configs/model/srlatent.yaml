@@ -7,26 +7,22 @@ params:
   timesteps: 1000
   first_stage_key: "jpg"
   cond_stage_key: "txt"
-  control_key: "hint"
   image_size: 64
   channels: 4
   cond_stage_trainable: false
-  conditioning_key: crossattn
   monitor: val/loss_simple_ema
   scale_factor: 0.18215
   use_ema: False
   
-  sd_locked: True
-  only_mid_control: False
   # Learning rate.
-  learning_rate: 1e-4
+  learning_rate: 5e-5
   
   
 
-  unet_config:
-    target: model.cldm.ControlledUnetModel
+  sr_config:
+    target: ldm.modules.diffusionmodules.openaimodel.UNetModel 
     params:
-      use_checkpoint: True
+      use_checkpoint: False
       image_size: 32 # unused
       in_channels: 4
       out_channels: 4
@@ -35,10 +31,9 @@ params:
       num_res_blocks: 2
       channel_mult: [ 1, 2, 4, 4 ]
       num_head_channels: 64 # need to fix for flash-attn
-      use_spatial_transformer: True
+      use_spatial_transformer: False
       use_linear_in_transformer: True
       transformer_depth: 1
-      context_dim: 1024
       legacy: False
 
   first_stage_config:
@@ -65,4 +60,26 @@ params:
       lossconfig:
         target: torch.nn.Identity
 
-  
+  unet_config:
+    target: model.cldm.ControlledUnetModel
+    params:
+      use_checkpoint: True
+      image_size: 32 # unused
+      in_channels: 4
+      out_channels: 4
+      model_channels: 320
+      attention_resolutions: [ 4, 2, 1 ]
+      num_res_blocks: 2
+      channel_mult: [ 1, 2, 4, 4 ]
+      num_head_channels: 64 # need to fix for flash-attn
+      use_spatial_transformer: True
+      use_linear_in_transformer: True
+      transformer_depth: 1
+      context_dim: 1024
+      legacy: False
+
+  cond_stage_config:
+    target: ldm.modules.encoders.modules.FrozenOpenCLIPEmbedder
+    params:
+      freeze: True
+      layer: "penultimate" 

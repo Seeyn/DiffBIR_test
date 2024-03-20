@@ -471,6 +471,7 @@ class ControlLDMwDiscriminator(LatentDiffusion):
     @torch.no_grad()
     def get_input(self, batch, k, bs=None, *args, **kwargs):
         x, c = super().get_input(batch, self.first_stage_key, *args, **kwargs)
+        print(x.shape)
         control = batch[self.control_key]
         if bs is not None:
             control = control[:bs]
@@ -499,7 +500,6 @@ class ControlLDMwDiscriminator(LatentDiffusion):
             )
             control = [c * scale for c, scale in zip(control, self.control_scales)]
             eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
-
         return eps
 
     @torch.no_grad()

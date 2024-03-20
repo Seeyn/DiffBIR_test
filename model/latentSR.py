@@ -30,10 +30,11 @@ class LatentSR(LatentDiffusion):
     # class LatentSR contains autoencoder and a latent-space SR predictor
     def __init__(self,
                  learning_rate,
-                 sr_config
-                 
-                 ):
-        super().__init__()
+                 sr_config,
+                 *args,
+                 **kwargs
+                 ) -> 'LatentSR':
+        super().__init__(*args, **kwargs)
 
         self.learning_rate = learning_rate
         self.SRmodel = instantiate_from_config(sr_config)
@@ -41,17 +42,21 @@ class LatentSR(LatentDiffusion):
     @torch.no_grad()
     def get_input(self, batch, *args, **kwargs):
         ''' batch['hint'] -> LR, batch['jpg'] -> HR'''
-        lr_latent = batch['hint']
+        lr_latent = batch['hint']* 2 - 1
         hr_latent = batch['jpg']
+
         def tran(x):
             if len(x.shape) == 3:
                 x = x[..., None]
             x = rearrange(x, 'b h w c -> b c h w')
             x = x.to(memory_format=torch.contiguous_format).float()
+            encoder_posterior = self.encode_first_stage(x)
+            z = self.get_first_stage_encoding(encoder_posterior).detach()
+            return z
+
         lr_latent = tran(lr_latent)
         hr_latent = tran(hr_latent)
-
-        return dict(lr=lr_latent,hr=hr_latent)
+        return dict(lr_latent=lr_latent,hr_latent=hr_latent)
         
     def shared_step(self, batch,**kwargs):
         x = self.get_input(batch)
@@ -62,9 +67,11 @@ class LatentSR(LatentDiffusion):
     def forward(self, x, *args, **kwargs):
         prefix = 'train'
         loss_dict = {}
+        #print(x)
         lr_latent = x['lr_latent']
         hr_latent = x['hr_latent']
-        sr_latent = self.SRmodel(lr_latent)
+        t = torch.zeros((lr_latent.shape[0],), device=self.device).long()
+        sr_latent = self.SRmodel(lr_latent,t)
         loss = self.get_loss(sr_latent, hr_latent)
         loss_dict.update({f'{prefix}/loss': loss.mean()})
             
@@ -107,17 +114,18 @@ class LatentSR(LatentDiffusion):
         log = dict()
         x = self.get_input(batch)
         
-        lr_latent = x['lr_latent'][0]
-        hr_latent = x['hr_latent'][0]
-        sr_latent = self.SRmodel(lr_latent).detach()
+        lr_latent = x['lr_latent']
+        hr_latent = x['hr_latent']
+        t = torch.zeros((lr_latent.shape[0],), device=self.device).long()
+        sr_latent = self.SRmodel(lr_latent,t).detach()
 
-        def log_and_decode(latent):
-            print(f'{latent}.shape:',latent.shape)
-            decode = (self.decode_first_stage(lr_latent) + 1) / 2
-            log[f'{decode}'] = decode
+        def _decode(latent):
+            decode = (self.decode_first_stage(latent) + 1) / 2
             return decode
         
-        map(log_and_decode,[lr_latent,hr_latent,sr_latent])
+        log['lr'] = _decode(lr_latent)
+        log['sr'] = _decode(sr_latent)
+        log['hr'] = _decode(hr_latent)
 
         return log
         
