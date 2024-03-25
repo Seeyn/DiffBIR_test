@@ -72,7 +72,7 @@ class CodeformerDataset(data.Dataset):
         # random horizontal flip
         img_gt = augment(img_gt, hflip=self.use_hflip, rotation=False, return_status=False)
         h, w, _ = img_gt.shape
-        
+        '''
         # ------------------------ generate lq image ------------------------ #
         # blur
         kernel = random_mixed_kernels(
@@ -97,13 +97,13 @@ class CodeformerDataset(data.Dataset):
         
         # resize to original size
         img_lq = cv2.resize(img_lq, (w, h), interpolation=cv2.INTER_LINEAR)
-        
+        '''
         # BGR to RGB, [-1, 1]
         target = (img_gt[..., ::-1] * 2 - 1).astype(np.float32)
         # BGR to RGB, [0, 1]
-        source = img_lq[..., ::-1].astype(np.float32)
+        #source = img_lq[..., ::-1].astype(np.float32)
         
-        return dict(jpg=target, txt="", hint=source)
+        return dict(jpg=target, txt="", hint=(target+1)/2)
 
     def __len__(self) -> int:
         return len(self.paths)

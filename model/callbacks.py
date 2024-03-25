@@ -46,7 +46,8 @@ class ImageLogger(Callback):
         batch: Any, batch_idx: int, dataloader_idx: int
     ) -> None:
         print(pl_module.global_step)
-        if (pl_module.global_step+1) % self.log_every_n_steps == 0 or pl_module.global_step==1:
+        #if (pl_module.global_step+1) % self.log_every_n_steps == 0 or pl_module.global_step==1:
+        if True:
             is_train = pl_module.training
             if is_train:
                 pl_module.freeze()

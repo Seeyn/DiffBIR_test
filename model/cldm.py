@@ -471,7 +471,6 @@ class ControlLDMwDiscriminator(LatentDiffusion):
     @torch.no_grad()
     def get_input(self, batch, k, bs=None, *args, **kwargs):
         x, c = super().get_input(batch, self.first_stage_key, *args, **kwargs)
-        print(x.shape)
         control = batch[self.control_key]
         if bs is not None:
             control = control[:bs]
@@ -550,19 +549,19 @@ class ControlLDMwDiscriminator(LatentDiffusion):
     def configure_optimizers(self):
         lr = self.learning_rate
         params = list(self.control_model.parameters())
-        print(self.sd_locked)
         if not self.sd_locked:
             params += list(self.model.diffusion_model.output_blocks.parameters())
             params += list(self.model.diffusion_model.out.parameters())
         opt = torch.optim.AdamW(params, lr=lr)
         opt_d = torch.optim.AdamW(self.discriminator.parameters(), lr=lr)
         return [opt,opt_d], []
+        #return [opt],[]
 
     def validation_step(self, batch, batch_idx):
         # TODO: 
         pass
     
-    def training_step(self, batch, batch_idx,optimizer_idx):
+    def training_step(self, batch, batch_idx,optimizer_idx=None):
         '''get data'''
         self.current_iter = batch_idx
         for k in self.ucg_training:
@@ -595,7 +594,7 @@ class ControlLDMwDiscriminator(LatentDiffusion):
     
 
     def forward(self, x, c, optimizer_idx,*args, **kwargs):
-        if optimizer_idx == 0:
+        if optimizer_idx == 0 or optimizer_idx is None:
             t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=self.device).long()
             if self.model.conditioning_key is not None:
                 assert c is not None
@@ -606,8 +605,8 @@ class ControlLDMwDiscriminator(LatentDiffusion):
                     c = self.q_sample(x_start=c, t=tc, noise=torch.randn_like(c.float()))
 
             loss, loss_dict = self.p_losses(x, c, t, *args, **kwargs)
-
-            t = torch.randint(0, 300, (x.shape[0],), device=self.device).long()
+        
+            t = torch.randint(0, 200, (x.shape[0],), device=self.device).long()
             #t = torch.zeros((x.shape[0],),device=self.device).long() + 200
             if self.model.conditioning_key is not None:
                 assert c is not None
@@ -621,7 +620,7 @@ class ControlLDMwDiscriminator(LatentDiffusion):
             loss_dict.update(loss_dict_)
 
         else:
-            t = torch.randint(0, 300, (x.shape[0],), device=self.device).long()
+            t = torch.randint(0, 200, (x.shape[0],), device=self.device).long()
             #t = torch.zeros((x.shape[0],),device=self.device).long() + 200
 
             if self.model.conditioning_key is not None:
@@ -633,7 +632,7 @@ class ControlLDMwDiscriminator(LatentDiffusion):
                     c = self.q_sample(x_start=c, t=tc, noise=torch.randn_like(c.float()))
             loss, loss_dict =  self.d_losses(x,c,t,noise=None,optimize_d=True)
             
-
+        
         return loss,loss_dict
 
      
