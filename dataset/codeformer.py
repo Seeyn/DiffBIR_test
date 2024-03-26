@@ -3,7 +3,7 @@ import math
 import time
 
 import numpy as np
-import cv2
+import cv2,torch
 from PIL import Image
 import torch.utils.data as data
 
@@ -28,7 +28,10 @@ class CodeformerDataset(data.Dataset):
         blur_sigma: Sequence[float],
         downsample_range: Sequence[float],
         noise_range: Sequence[float],
-        jpeg_range: Sequence[int]
+        jpeg_range: Sequence[int],
+        component_path: str,
+        eye_enlarge_ratio: float,
+        crop_components: bool
     ) -> "CodeformerDataset":
         super(CodeformerDataset, self).__init__()
         self.file_list = file_list
@@ -45,6 +48,38 @@ class CodeformerDataset(data.Dataset):
         self.downsample_range = downsample_range
         self.noise_range = noise_range
         self.jpeg_range = jpeg_range
+        self.crop_components = crop_components  # facial components
+        self.eye_enlarge_ratio = eye_enlarge_ratio  # whether enlarge eye regions
+        if self.crop_components:
+            # load component list from a pre-process pth files
+            self.components_list = torch.load(component_path)
+
+
+    def get_component_coordinates(self, index, status):
+        """Get facial component (left_eye, right_eye, mouth) coordinates from a pre-loaded pth file"""
+        components_bbox = self.components_list[f'{index:08d}']
+        if status[0]:  # hflip
+            # exchange right and left eye
+            tmp = components_bbox['left_eye']
+            components_bbox['left_eye'] = components_bbox['right_eye']
+            components_bbox['right_eye'] = tmp
+            # modify the width coordinate
+            components_bbox['left_eye'][0] = self.out_size - components_bbox['left_eye'][0]
+            components_bbox['right_eye'][0] = self.out_size - components_bbox['right_eye'][0]
+            components_bbox['mouth'][0] = self.out_size - components_bbox['mouth'][0]
+
+        # get coordinates
+        locations = []
+        for part in ['left_eye', 'right_eye', 'mouth']:
+            mean = components_bbox[part][0:2]
+            half_len = components_bbox[part][2]
+            if 'eye' in part:
+                half_len *= self.eye_enlarge_ratio
+            loc = np.hstack((mean - half_len + 1, mean + half_len))
+            loc = torch.from_numpy(loc).float()
+            locations.append(loc)
+        return locations
+
 
     def __getitem__(self, index: int) -> Dict[str, Union[np.ndarray, str]]:
         # load gt image
@@ -70,9 +105,14 @@ class CodeformerDataset(data.Dataset):
         img_gt = (pil_img_gt[..., ::-1] / 255.0).astype(np.float32)
         
         # random horizontal flip
-        img_gt = augment(img_gt, hflip=self.use_hflip, rotation=False, return_status=False)
+        img_gt, status = augment(img_gt, hflip=self.opt['use_hflip'], rotation=False, return_status=True)
         h, w, _ = img_gt.shape
-        '''
+
+        if self.crop_components:
+            locations = self.get_component_coordinates(index, status)
+            loc_left_eye, loc_right_eye, loc_mouth = locations
+
+        
         # ------------------------ generate lq image ------------------------ #
         # blur
         kernel = random_mixed_kernels(
@@ -97,13 +137,25 @@ class CodeformerDataset(data.Dataset):
         
         # resize to original size
         img_lq = cv2.resize(img_lq, (w, h), interpolation=cv2.INTER_LINEAR)
-        '''
+    
         # BGR to RGB, [-1, 1]
         target = (img_gt[..., ::-1] * 2 - 1).astype(np.float32)
         # BGR to RGB, [0, 1]
-        #source = img_lq[..., ::-1].astype(np.float32)
+        source = img_lq[..., ::-1].astype(np.float32)
         
-        return dict(jpg=target, txt="", hint=(target+1)/2)
+        # return dict(jpg=target, txt="", hint=(target+1)/2)
+        if self.crop_components:
+            return_dict = {
+                'hint': img_lq,
+                'jpg': img_gt,
+                'txt':"",
+                'loc_left_eye': loc_left_eye,
+                'loc_right_eye': loc_right_eye,
+                'loc_mouth': loc_mouth
+            }
+            return return_dict
+        else:
+            return dict(jpg=target, txt="", hint=source)
 
     def __len__(self) -> int:
         return len(self.paths)

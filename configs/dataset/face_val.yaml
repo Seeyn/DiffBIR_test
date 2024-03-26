@@ -14,6 +14,10 @@ dataset:
     downsample_range: [7, 9]
     noise_range: [0, 20]
     jpeg_range: [60, 100]
+    crop_components: False  # facial components
+    component_path: ~ 
+    eye_enlarge_ratio: 1.4 
+
 
 data_loader:
   batch_size: 2
