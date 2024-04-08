@@ -105,7 +105,7 @@ class CodeformerDataset(data.Dataset):
         img_gt = (pil_img_gt[..., ::-1] / 255.0).astype(np.float32)
         
         # random horizontal flip
-        img_gt, status = augment(img_gt, hflip=self.opt['use_hflip'], rotation=False, return_status=True)
+        img_gt, status = augment(img_gt, hflip=True, rotation=False, return_status=True)
         h, w, _ = img_gt.shape
 
         if self.crop_components:
@@ -146,8 +146,8 @@ class CodeformerDataset(data.Dataset):
         # return dict(jpg=target, txt="", hint=(target+1)/2)
         if self.crop_components:
             return_dict = {
-                'hint': img_lq,
-                'jpg': img_gt,
+                'hint': source,
+                'jpg': target,
                 'txt':"",
                 'loc_left_eye': loc_left_eye,
                 'loc_right_eye': loc_right_eye,

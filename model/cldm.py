@@ -7,6 +7,8 @@ import numpy as np
 import torch
 import torch as th
 import torch.nn as nn
+from torch.nn import functional as F
+import math
 
 from ldm.modules.diffusionmodules.util import (
     conv_nd,
@@ -25,8 +27,6 @@ from ldm.util import log_txt_as_img, exists, default, ismap, isimage, mean_flat,
 from taming.modules.losses.vqperceptual import * 
 from basicsr.losses.gan_loss import *
 from basicsr.losses.basic_loss import *
-from basicsr.archs.stylegan2_arch import (ConvLayer, EqualConv2d, EqualLinear, ResBlock, ScaledLeakyReLU,
-                                          StyleGAN2Generator)
 from torchvision.ops import roi_align
 
 
@@ -780,7 +780,7 @@ class ControlLDMwLocalDiscriminator(LatentDiffusion):
         self.net_d_left_eye.train()
         self.net_d_right_eye.train()
         self.net_d_mouth.train()
-
+        self.mouths = None
 
         self.gan_loss = GANLoss('vanilla',real_label_val=1.0, fake_label_val=0.0,loss_weight = 0.1)
         self.cri_l1 = L1Loss(loss_weight=1.0, reduction='mean')
@@ -810,7 +810,7 @@ class ControlLDMwLocalDiscriminator(LatentDiffusion):
     def get_input(self, batch, k, bs=None, *args, **kwargs):
         x, c = super().get_input(batch, self.first_stage_key, *args, **kwargs)
         control = batch[self.control_key]
-        self.gt = torch.nn.functional.interpolate(batch['jpg'],size=(256,256))
+        self.gt = batch['jpg'].permute(0,3,1,2)
         if bs is not None:
             control = control[:bs]
         control = control.to(self.device)
@@ -822,9 +822,9 @@ class ControlLDMwLocalDiscriminator(LatentDiffusion):
         # apply condition encoder
         c_latent = self.apply_condition_encoder(control)
         if 'loc_left_eye' in batch:
-            self.loc_left_eyes = batch['loc_left_eye']/2
-            self.loc_right_eyes = batch['loc_right_eye']/2
-            self.loc_mouths = batch['loc_mouth']/2
+            self.loc_left_eyes = batch['loc_left_eye']
+            self.loc_right_eyes = batch['loc_right_eye']
+            self.loc_mouths = batch['loc_mouth']
         return x, dict(c_crossattn=[c], c_latent=[c_latent], lq=[lq], c_concat=[control])
 
     def apply_model(self, x_noisy, t, cond, *args, **kwargs):
@@ -871,9 +871,12 @@ class ControlLDMwLocalDiscriminator(LatentDiffusion):
         x_samples = samples.clamp(0, 1)
         #x_samples = (einops.rearrange(x_samples, "b c h w -> b h w c") * 255).cpu().numpy().clip(0, 255).astype(np.uint8)
         log["samples"] = x_samples
-        if self.mouths:
-            log["left_eye"] = self.mouths.detach()
+        ''' 
+        if self.mouths is not None:
+            log["left_eye"] = (self.left_eyes.detach() +1 )/2
+            log["left_eye_gt"] = (self.left_eyes_gt.detach() +1 )/2
             print(log["left_eye"].max(),log["left_eye"].min())
+        '''
         return log
 
     @torch.no_grad()
@@ -936,7 +939,7 @@ class ControlLDMwLocalDiscriminator(LatentDiffusion):
 
         
     
-    def shared_step(self, batch,optimizer_idx,**kwargs):
+    def shared_step(self, batch,**kwargs):
         x, c = self.get_input(batch, self.first_stage_key)
         optimizer_g, optimizer_d_left_eye, optimizer_d_right_eye, optimizer_d_mouth = self.optimizers()
 
@@ -944,7 +947,7 @@ class ControlLDMwLocalDiscriminator(LatentDiffusion):
         # Diffusion loss
         t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=self.device).long()
         model_output,noise = self(x, c,t,img_output=False)
-        loss_total, loss_dict = {}
+        loss_total, loss_dict = 0,{}
 
         loss, loss_dict_ = self.p_losses(model_output,t,noise)
         loss_total += loss
@@ -981,7 +984,7 @@ class ControlLDMwLocalDiscriminator(LatentDiffusion):
         return loss_dict
     
 
-    def forward(self, x, c,t, img_output=False,*args, **kwargs):
+    def forward(self, x, c,t, img_output=False,noise=None,*args, **kwargs):
         ####Generator
         
         if self.model.conditioning_key is not None:
@@ -992,7 +995,8 @@ class ControlLDMwLocalDiscriminator(LatentDiffusion):
                 tc = self.cond_ids[t].to(self.device)
                 c = self.q_sample(x_start=c, t=tc, noise=torch.randn_like(c.float()))
         
-        noise = default(noise, lambda: torch.randn_like(x))
+        
+        noise = default(noise,lambda: torch.randn_like(x))
         x_noisy = self.q_sample(x_start=x, t=t, noise=noise)
         model_output = self.apply_model(x_noisy, t, c)
         if img_output:
@@ -1014,7 +1018,7 @@ class ControlLDMwLocalDiscriminator(LatentDiffusion):
             fake_d_pred, _ = self.net_d_left_eye(self.left_eyes.detach())
             real_d_pred, _ = self.net_d_left_eye(self.left_eyes_gt)
             l_d_left_eye = self.gan_loss(
-                real_d_pred, True, is_disc=True) + self.cri_gan(
+                real_d_pred, True, is_disc=True) + self.gan_loss(
                     fake_d_pred, False, is_disc=True)
             loss_dict['l_d_left_eye'] = l_d_left_eye
 
@@ -1022,7 +1026,7 @@ class ControlLDMwLocalDiscriminator(LatentDiffusion):
             fake_d_pred, _ = self.net_d_right_eye(self.right_eyes.detach())
             real_d_pred, _ = self.net_d_right_eye(self.right_eyes_gt)
             l_d_right_eye = self.gan_loss(
-                real_d_pred, True, is_disc=True) + self.cri_gan(
+                real_d_pred, True, is_disc=True) + self.gan_loss(
                     fake_d_pred, False, is_disc=True)
             loss_dict['l_d_right_eye'] = l_d_right_eye
 
@@ -1030,7 +1034,7 @@ class ControlLDMwLocalDiscriminator(LatentDiffusion):
             fake_d_pred, _ = self.net_d_mouth(self.mouths.detach())
             real_d_pred, _ = self.net_d_mouth(self.mouths_gt)
             l_d_mouth = self.gan_loss(
-                real_d_pred, True, is_disc=True) + self.cri_gan(
+                real_d_pred, True, is_disc=True) + self.gan_loss(
                     fake_d_pred, False, is_disc=True)
             loss_dict['l_d_mouth'] = l_d_mouth
 
@@ -1074,7 +1078,20 @@ class ControlLDMwLocalDiscriminator(LatentDiffusion):
 
             return l_g_total, loss_dict
     
+    def _gram_mat(self, x):
+        """Calculate Gram matrix.
 
+        Args:
+            x (torch.Tensor): Tensor with shape of (n, c, h, w).
+
+        Returns:
+            torch.Tensor: Gram matrix.
+        """
+        n, c, h, w = x.size()
+        features = x.view(n, c, w * h)
+        features_t = features.transpose(1, 2)
+        gram = features.bmm(features_t) / (c * h * w)
+        return gram
     
     def p_losses(self, model_output, t,noise=None):
                  
@@ -1102,7 +1119,7 @@ class ControlLDMwLocalDiscriminator(LatentDiffusion):
         return loss, loss_dict
     
     def get_roi_regions(self, eye_out_size=80, mouth_out_size=120):
-        face_ratio = int(256 / 512)
+        face_ratio = int(512 / 512)
         eye_out_size *= face_ratio
         mouth_out_size *= face_ratio
 
@@ -1123,16 +1140,154 @@ class ControlLDMwLocalDiscriminator(LatentDiffusion):
         rois_mouths = torch.cat(rois_mouths, 0).to(self.device)
 
         # real images
+
+        #print('gt',(self.gt.max(),self.gt.min()),self.gt.shape)
         all_eyes = roi_align(self.gt, boxes=rois_eyes, output_size=eye_out_size) * face_ratio
         self.left_eyes_gt = all_eyes[0::2, :, :, :]
         self.right_eyes_gt = all_eyes[1::2, :, :, :]
         self.mouths_gt = roi_align(self.gt, boxes=rois_mouths, output_size=mouth_out_size) * face_ratio
+        #print('gt',(self.gt.max(),self.gt.min()),self.gt.shape,self.left_eyes_gt.shape,self.right_eyes_gt.shape,self.mouths_gt.shape)
         # output
+        #print('sr',(self.output.max(),self.output.min()),self.output.shape)
         all_eyes = roi_align(self.output, boxes=rois_eyes, output_size=eye_out_size) * face_ratio
         self.left_eyes = all_eyes[0::2, :, :, :]
         self.right_eyes = all_eyes[1::2, :, :, :]
         self.mouths = roi_align(self.output, boxes=rois_mouths, output_size=mouth_out_size) * face_ratio
 
+        #print('sr',(self.output.max(),self.output.min()),self.output.shape,self.left_eyes.shape,self.right_eyes.shape,self.mouths.shape)
+
+
+class FusedLeakyReLU(nn.Module):
+    def __init__(self, channel, negative_slope=0.2, scale=2 ** 0.5, device='cpu'):
+        super().__init__()
+
+        self.bias = nn.Parameter(torch.zeros(channel))
+        self.negative_slope = negative_slope
+        self.scale = scale
+        self.device = device
+
+    def forward(self, input):
+        return fused_leaky_relu(input, self.bias, self.negative_slope, self.scale, self.device)
+
+
+def fused_leaky_relu(input, bias, negative_slope=0.2, scale=2 ** 0.5, device='cpu'):
+    return scale * F.leaky_relu(input + bias.view((1, -1)+(1,)*(len(input.shape)-2)), negative_slope=negative_slope)
+
+class ConvLayer(nn.Sequential):
+    def __init__(
+        self,
+        in_channel,
+        out_channel,
+        kernel_size,
+        downsample=False,
+        blur_kernel=[1, 3, 3, 1],
+        bias=True,
+        activate=True,
+        device='cpu'
+    ):
+        layers = []
+
+        if downsample:
+            factor = 2
+            p = (len(blur_kernel) - factor) + (kernel_size - 1)
+            pad0 = (p + 1) // 2
+            pad1 = p // 2
+
+            layers.append(Blur(blur_kernel, pad=(pad0, pad1), device=device))
+
+            stride = 2
+            self.padding = 0
+
+        else:
+            stride = 1
+            self.padding = kernel_size // 2
+
+        layers.append(
+            EqualConv2d(
+                in_channel,
+                out_channel,
+                kernel_size,
+                padding=self.padding,
+                stride=stride,
+                bias=bias and not activate,
+            )
+        )
+
+        if activate:
+            if bias:
+                layers.append(FusedLeakyReLU(out_channel, device=device))
+
+            else:
+                layers.append(ScaledLeakyReLU(0.2))
+
+        super().__init__(*layers)
+
+class Blur(nn.Module):
+    def __init__(self, kernel, pad, upsample_factor=1, device='cpu'):
+        super().__init__()
+
+        kernel = make_kernel(kernel)
+
+        if upsample_factor > 1:
+            kernel = kernel * (upsample_factor ** 2)
+
+        self.register_buffer('kernel', kernel)
+
+        self.pad = pad
+        self.device = device
+
+    def forward(self, input):
+        out = upfirdn2d(input, self.kernel, pad=self.pad, device=self.device)
+
+        return out
+
+
+class EqualConv2d(nn.Module):
+    def __init__(
+        self, in_channel, out_channel, kernel_size, stride=1, padding=0, bias=True
+    ):
+        super().__init__()
+
+        self.weight = nn.Parameter(
+            torch.randn(out_channel, in_channel, kernel_size, kernel_size)
+        )
+        self.scale = 1 / math.sqrt(in_channel * kernel_size ** 2)
+
+        self.stride = stride
+        self.padding = padding
+
+        if bias:
+            self.bias = nn.Parameter(torch.zeros(out_channel))
+
+        else:
+            self.bias = None
+
+    def forward(self, input):
+        out = F.conv2d(
+            input,
+            self.weight * self.scale,
+            bias=self.bias,
+            stride=self.stride,
+            padding=self.padding,
+        )
+
+        return out
+
+    def __repr__(self):
+        return (
+            f'{self.__class__.__name__}({self.weight.shape[1]}, {self.weight.shape[0]},'
+            f' {self.weight.shape[2]}, stride={self.stride}, padding={self.padding})'
+        )
+
+def make_kernel(k):
+    k = torch.tensor(k, dtype=torch.float32)
+
+    if k.ndim == 1:
+        k = k[None, :] * k[:, None]
+
+    k /= k.sum()
+
+    return k
 
 class FacialComponentDiscriminator(nn.Module):
     """Facial component (eyes, mouth, noise) discriminator used in GFPGAN.
@@ -1141,11 +1296,11 @@ class FacialComponentDiscriminator(nn.Module):
     def __init__(self):
         super(FacialComponentDiscriminator, self).__init__()
         # It now uses a VGG-style architectrue with fixed model size
-        self.conv1 = ConvLayer(3, 64, 3, downsample=False, resample_kernel=(1, 3, 3, 1), bias=True, activate=True)
-        self.conv2 = ConvLayer(64, 128, 3, downsample=True, resample_kernel=(1, 3, 3, 1), bias=True, activate=True)
-        self.conv3 = ConvLayer(128, 128, 3, downsample=False, resample_kernel=(1, 3, 3, 1), bias=True, activate=True)
-        self.conv4 = ConvLayer(128, 256, 3, downsample=True, resample_kernel=(1, 3, 3, 1), bias=True, activate=True)
-        self.conv5 = ConvLayer(256, 256, 3, downsample=False, resample_kernel=(1, 3, 3, 1), bias=True, activate=True)
+        self.conv1 = ConvLayer(3, 64, 3, downsample=False, bias=True, activate=True)
+        self.conv2 = ConvLayer(64, 128, 3, downsample=True, bias=True, activate=True)
+        self.conv3 = ConvLayer(128, 128, 3, downsample=False, bias=True, activate=True)
+        self.conv4 = ConvLayer(128, 256, 3, downsample=True, bias=True, activate=True)
+        self.conv5 = ConvLayer(256, 256, 3, downsample=False, bias=True, activate=True)
         self.final_conv = ConvLayer(256, 1, 3, bias=True, activate=False)
 
     def forward(self, x, return_feats=False, **kwargs):
@@ -1169,3 +1324,43 @@ class FacialComponentDiscriminator(nn.Module):
             return out, rlt_feats
         else:
             return out, None
+def upfirdn2d(input, kernel, up=1, down=1, pad=(0, 0),device='cpu'):
+    # out = UpFirDn2d.apply(
+    #     input, kernel, (up, up), (down, down), (pad[0], pad[1], pad[0], pad[1])
+    # )
+    out = upfirdn2d_native(input, kernel, up, up, down, down, pad[0], pad[1], pad[0], pad[1])
+    return out
+def upfirdn2d_native(
+    input, kernel, up_x, up_y, down_x, down_y, pad_x0, pad_x1, pad_y0, pad_y1
+):
+    input = input.permute(0, 2, 3, 1)
+    _, in_h, in_w, minor = input.shape
+    kernel_h, kernel_w = kernel.shape
+    out = input.view(-1, in_h, 1, in_w, 1, minor)
+    out = F.pad(out, [0, 0, 0, up_x - 1, 0, 0, 0, up_y - 1])
+    out = out.view(-1, in_h * up_y, in_w * up_x, minor)
+
+    out = F.pad(
+        out, [0, 0, max(pad_x0, 0), max(pad_x1, 0), max(pad_y0, 0), max(pad_y1, 0)]
+    )
+    out = out[
+        :,
+        max(-pad_y0, 0) : out.shape[1] - max(-pad_y1, 0),
+        max(-pad_x0, 0) : out.shape[2] - max(-pad_x1, 0),
+        :,
+    ]
+
+    out = out.permute(0, 3, 1, 2)
+    out = out.reshape(
+        [-1, 1, in_h * up_y + pad_y0 + pad_y1, in_w * up_x + pad_x0 + pad_x1]
+    )
+    w = torch.flip(kernel, [0, 1]).view(1, 1, kernel_h, kernel_w)
+    out = F.conv2d(out, w)
+    out = out.reshape(
+        -1,
+        minor,
+        in_h * up_y + pad_y0 + pad_y1 - kernel_h + 1,
+        in_w * up_x + pad_x0 + pad_x1 - kernel_w + 1,
+    )
+    # out = out.permute(0, 2, 3, 1)
+    return out[:, :, ::down_y, ::down_x]

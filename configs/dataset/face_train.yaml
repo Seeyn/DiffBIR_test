@@ -15,7 +15,7 @@ dataset:
     noise_range: [0, 20]
     jpeg_range: [30, 100]
     crop_components: True  # facial components
-    component_path: ~ 
+    component_path: /lab02/tangb_lab/cse12132338/Datasets/NVIDIA-FFHQdataset/FFHQ_eye_mouth_landmarks_512.pth 
     eye_enlarge_ratio: 1.4 
 
 data_loader:
