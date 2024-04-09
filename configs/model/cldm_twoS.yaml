@@ -23,7 +23,7 @@ params:
   ckpt_path_ctr: ~    #  path to the ControlNet-XS weights
   control_mode: canny
   control_stage_config:
-    target: ldm.modules.diffusionmodules.twoStreamControl.TwoStreamControlNet
+    target: model.cldm.twoStreamControl.TwoStreamControlNet
     params:
       image_size: 32
       in_channels: 4
