@@ -1812,3 +1812,4 @@ class LatentUpscaleFinetuneDiffusion(LatentFinetuneDiffusion):
         log = super().log_images(*args, **kwargs)
         log["lr"] = rearrange(args[0]["lr"], 'b h w c -> b c h w')
         return log
+
