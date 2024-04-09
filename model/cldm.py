@@ -1243,6 +1243,11 @@ class TwoStreamControlLDM(LatentDiffusion):
 
         return eps
 
+    def apply_condition_encoder(self, control):
+        c_latent_meanvar = self.cond_encoder(control * 2 - 1)
+        c_latent = DiagonalGaussianDistribution(c_latent_meanvar).mode() # only use mode
+        c_latent = c_latent * self.scale_factor
+        return c_latent
     
     @torch.no_grad()
     def get_unconditional_conditioning(self, N):
