@@ -7,9 +7,9 @@ params:
   num_timesteps_cond: 1
   log_every_t: 200
   timesteps: 1000
-  first_stage_key: image
-  cond_stage_key: caption
-  control_key: hint
+  first_stage_key: "jpg"
+  cond_stage_key: "txt"
+  control_key: "hint"
   image_size: 64
   channels: 4
   cond_stage_trainable: false
@@ -72,6 +72,7 @@ params:
       - 4
       num_heads: 8
       use_spatial_transformer: true
+      use_linear_in_transformer: True
       transformer_depth: 1
       context_dim: 1024
       use_checkpoint: true
