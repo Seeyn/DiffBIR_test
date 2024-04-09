@@ -73,7 +73,7 @@ params:
       num_heads: 8
       use_spatial_transformer: true
       transformer_depth: 1
-      context_dim: 768
+      context_dim: 1024
       use_checkpoint: true
       legacy: false
   first_stage_config:
