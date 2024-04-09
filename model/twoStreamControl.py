@@ -239,17 +239,18 @@ class TwoStreamControlNet(nn.Module):
             nn.SiLU(),
             conv_nd(dims, 16, 16, 3, padding=1),
             nn.SiLU(),
-            conv_nd(dims, 16, 32, 3, padding=1, stride=2),
-            nn.SiLU(),
-            conv_nd(dims, 32, 32, 3, padding=1),
-            nn.SiLU(),
-            conv_nd(dims, 32, 96, 3, padding=1, stride=2),
-            nn.SiLU(),
-            conv_nd(dims, 96, 96, 3, padding=1),
-            nn.SiLU(),
-            conv_nd(dims, 96, 256, 3, padding=1, stride=2),
-            nn.SiLU(),
-            zero_module(conv_nd(dims, 256, max(1, int(model_channels * control_model_ratio)), 3, padding=1))
+            #conv_nd(dims, 16, 32, 3, padding=1, stride=2),
+            #nn.SiLU(),
+            #conv_nd(dims, 32, 32, 3, padding=1),
+            #nn.SiLU(),
+            #conv_nd(dims, 32, 96, 3, padding=1, stride=2),
+            #nn.SiLU(),
+            #conv_nd(dims, 96, 96, 3, padding=1),
+            #nn.SiLU(),
+            #conv_nd(dims, 96, 256, 3, padding=1, stride=2),
+            #nn.SiLU(),
+            #zero_module(conv_nd(dims, 256, max(1, int(model_channels * control_model_ratio)), 3, padding=1))
+            zero_module(conv_nd(dims, 16, max(1, int(model_channels * control_model_ratio)), 3, padding=1))
         )
 
         scale_list = [1.] * len(self.enc_zero_convs_out) + [1.] + [1.] * len(self.dec_zero_convs_out)
@@ -280,12 +281,14 @@ class TwoStreamControlNet(nn.Module):
             emb = self.control_model.time_embed(t_emb) * self.control_scale ** 0.3 + base_model.time_embed(t_emb) * (1 - self.control_scale ** 0.3)
         else:
             emb = base_model.time_embed(t_emb)
-
+        
         if precomputed_hint:
             guided_hint = hint
         else:
             guided_hint = self.input_hint_block(hint, emb, context)
+        
 
+        #print(hint.shape,guided_hint.shape)
         h_ctr = h_base = x.type(base_model.dtype)
         hs_base = []
         hs_ctr = []
@@ -302,6 +305,7 @@ class TwoStreamControlNet(nn.Module):
             for module_base, module_ctr in zip(base_model.input_blocks, self.control_model.input_blocks):
                 h_base = module_base(h_base, emb, context)
                 h_ctr = module_ctr(h_ctr, emb, context)
+                #print(h_ctr.shape,h_base.shape)
                 if guided_hint is not None:
                     h_ctr = h_ctr + guided_hint
                     guided_hint = None
@@ -313,7 +317,8 @@ class TwoStreamControlNet(nn.Module):
                 hs_ctr.append(h_ctr)
 
                 h_ctr = self.infuse(h_ctr, h_base, next(it_enc_convs_in), self.infusion2control, emb)
-
+                
+                #print(h_ctr.shape,h_base.shape)
             # mid blocks (bottleneck)
             h_base = base_model.middle_block(h_base, emb, context)
             h_ctr = self.control_model.middle_block(h_ctr, emb, context)
