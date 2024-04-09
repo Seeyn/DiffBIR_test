@@ -29,7 +29,7 @@ from taming.modules.losses.vqperceptual import *
 from basicsr.losses.gan_loss import *
 from basicsr.losses.basic_loss import *
 from torchvision.ops import roi_align
-from discriminator import *
+from .discriminator import *
 
         
 
