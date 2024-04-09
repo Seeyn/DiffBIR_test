@@ -28,7 +28,7 @@ params:
       image_size: 32
       in_channels: 4
       out_channels: 4
-      hint_channels: 3
+      hint_channels: 4
       model_channels: 320
       attention_resolutions:
       - 4
