@@ -1,5 +1,7 @@
 target: model.cldm.TwoStreamControlLDM
 params:
+  learning_rate: 1e-4
+
   linear_start: 0.00085
   linear_end: 0.012
   num_timesteps_cond: 1
@@ -97,26 +99,26 @@ params:
       lossconfig:
         target: torch.nn.Identity
 
-cond_stage_config:
-  target: ldm.modules.encoders.modules.FrozenOpenCLIPEmbedder
-  params:
-    freeze: True
-    layer: "penultimate"
+  cond_stage_config:
+    target: ldm.modules.encoders.modules.FrozenOpenCLIPEmbedder
+    params:
+      freeze: True
+      layer: "penultimate"
 
-preprocess_config:
-  target: model.swinir.SwinIR
-  params:
-    img_size: 64
-    patch_size: 1
-    in_chans: 3
-    embed_dim: 180
-    depths: [6, 6, 6, 6, 6, 6, 6, 6]
-    num_heads: [6, 6, 6, 6, 6, 6, 6, 6]
-    window_size: 8
-    mlp_ratio: 2
-    sf: 8
-    img_range: 1.0
-    upsampler: "nearest+conv"
-    resi_connection: "1conv"
-    unshuffle: True
-    unshuffle_scale: 8
+  preprocess_config:
+    target: model.swinir.SwinIR
+    params:
+      img_size: 64
+      patch_size: 1
+      in_chans: 3
+      embed_dim: 180
+      depths: [6, 6, 6, 6, 6, 6, 6, 6]
+      num_heads: [6, 6, 6, 6, 6, 6, 6, 6]
+      window_size: 8
+      mlp_ratio: 2
+      sf: 8
+      img_range: 1.0
+      upsampler: "nearest+conv"
+      resi_connection: "1conv"
+      unshuffle: True
+      unshuffle_scale: 8
