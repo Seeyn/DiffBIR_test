@@ -233,12 +233,12 @@ class TwoStreamControlNet(nn.Module):
                         self.dec_zero_convs_out.append(self.make_zero_conv(
                             in_channels=ch_inout_ctr['dec'][i][1], out_channels=ch_inout_base['dec'][i][1])
                         )
-
+        '''
         self.input_hint_block = TimestepEmbedSequential(
             conv_nd(dims, hint_channels, 16, 3, padding=1),
-            nn.SiLU(),
-            conv_nd(dims, 16, 16, 3, padding=1),
-            nn.SiLU(),
+            #nn.SiLU(),
+            #conv_nd(dims, 16, 16, 3, padding=1),
+            #nn.SiLU(),
             #conv_nd(dims, 16, 32, 3, padding=1, stride=2),
             #nn.SiLU(),
             #conv_nd(dims, 32, 32, 3, padding=1),
@@ -252,6 +252,9 @@ class TwoStreamControlNet(nn.Module):
             #zero_module(conv_nd(dims, 256, max(1, int(model_channels * control_model_ratio)), 3, padding=1))
             zero_module(conv_nd(dims, 16, max(1, int(model_channels * control_model_ratio)), 3, padding=1))
         )
+        '''
+        self.input_hint_block = TimestepEmbedSequential(conv_nd(dims, 4+int(model_channels * control_model_ratio), max(1, int(model_channels * control_model_ratio)), 3, padding=1))
+        
 
         scale_list = [1.] * len(self.enc_zero_convs_out) + [1.] + [1.] * len(self.dec_zero_convs_out)
         self.register_buffer('scale_list', torch.tensor(scale_list))
@@ -278,16 +281,19 @@ class TwoStreamControlNet(nn.Module):
 
         t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
         if self.learn_embedding:
-            emb = self.control_model.time_embed(t_emb) * self.control_scale ** 0.3 + base_model.time_embed(t_emb) * (1 - self.control_scale ** 0.3)
+            emb = self.control_model.time_embed(t_emb) * self.control_scale # ** 0.3 + base_model.time_embed(t_emb) * (1 - self.control_scale ** 0.3)
+            #print('haha,self')
         else:
             emb = base_model.time_embed(t_emb)
         
+        '''
         if precomputed_hint:
             guided_hint = hint
         else:
             guided_hint = self.input_hint_block(hint, emb, context)
-        
+        '''
 
+        guided_hint = hint
         #print(hint.shape,guided_hint.shape)
         h_ctr = h_base = x.type(base_model.dtype)
         hs_base = []
@@ -307,7 +313,8 @@ class TwoStreamControlNet(nn.Module):
                 h_ctr = module_ctr(h_ctr, emb, context)
                 #print(h_ctr.shape,h_base.shape)
                 if guided_hint is not None:
-                    h_ctr = h_ctr + guided_hint
+                    h_ctr = torch.cat([h_ctr,guided_hint],dim=1)
+                    h_ctr = self.input_hint_block(h_ctr,emb,context)
                     guided_hint = None
 
                 if self.guiding in ('encoder_double', 'full'):
@@ -758,7 +765,6 @@ class ControlledUNetModelFixed(nn.Module):
             from omegaconf.listconfig import ListConfig
             if type(context_dim) == ListConfig:
                 context_dim = list(context_dim)
-
         self.infusion2control = infusion2control
         infusion_factor = 1 / control_model_ratio
         if not fixed:

@@ -613,7 +613,7 @@ class ControlLDMwDiscriminator(LatentDiffusion):
                     c = self.q_sample(x_start=c, t=tc, noise=torch.randn_like(c.float()))
 
             loss, loss_dict = self.p_losses(x, c, t, *args, **kwargs)
-        
+            
             t = torch.randint(0, 200, (x.shape[0],), device=self.device).long()
             #t = torch.zeros((x.shape[0],),device=self.device).long() + 200
             if self.model.conditioning_key is not None:
@@ -624,9 +624,10 @@ class ControlLDMwDiscriminator(LatentDiffusion):
                     tc = self.cond_ids[t].to(self.device)
                     c = self.q_sample(x_start=c, t=tc, noise=torch.randn_like(c.float()))
             loss_, loss_dict_ =  self.d_losses(x,c,t,noise=None,optimize_d=False)
+            
             loss += loss_
             loss_dict.update(loss_dict_)
-
+            
         else:
             t = torch.randint(0, 200, (x.shape[0],), device=self.device).long()
             #t = torch.zeros((x.shape[0],),device=self.device).long() + 200
@@ -1197,6 +1198,12 @@ class TwoStreamControlLDM(LatentDiffusion):
         # instantiate preprocess module (SwinIR)
         self.current_iter = 0
         self.preprocess_model = instantiate_from_config(preprocess_config)
+        from collections import OrderedDict
+        new_state_dict = OrderedDict()
+        for k, v in torch.load('/lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/checkpoint/face_swinir_v1.ckpt').items():
+            name = k[7:] # remove `module.`
+            new_state_dict[name] = v
+        self.preprocess_model.load_state_dict(new_state_dict)
         frozen_module(self.preprocess_model)
         
         # instantiate condition encoder, since our condition encoder has the same 
@@ -1272,11 +1279,17 @@ class TwoStreamControlLDM(LatentDiffusion):
         log = dict()
         z, c = self.get_input(batch, self.first_stage_key)
         c_lq = c["lq"][0]
+        c_latent = c["c_latent"][0]
         c_cat, c = c["c_concat"][0], c["c_crossattn"][0]
 
         log["hq"] = (self.decode_first_stage(z) + 1) / 2
-        # log["control"] = c_cat
-        # log["decoded_control"] = (self.decode_first_stage(c_latent) + 1) / 2
+        '''
+        log["control"] = c_cat
+        try:
+            log["decoded_control"] = (self.decode_first_stage(c_latent) + 1) / 2
+        except:
+            print('heihei')
+        '''
         log["lq"] = c_lq
         # log["text"] = (log_txt_as_img((512, 512), batch[self.cond_stage_key], size=16) + 1) / 2
         
@@ -1315,6 +1328,15 @@ class TwoStreamControlLDM(LatentDiffusion):
     def configure_optimizers(self):
         lr = self.learning_rate
         params = list(self.control_model.parameters())
+        '''
+        params = params + list(self.enc_zero_convs_out.parameters())
+        params = params + list(self.enc_zero_convs_in.parameters())
+        params = params + list(self.model.middle_block_out.parameters())
+        params = params + list(self.model.middle_block_in.parameters())
+        params = params + list(self.model.dec_zero_convs_out.parameters())
+        params = params + list(self.model.dec_zero_convs_in.parameters())
+        params = params + list(self.model.input_hint_block.parameters())
+        '''
         if not self.sd_locked:
             params += list(self.model.diffusion_model.output_blocks.parameters())
             params += list(self.model.diffusion_model.out.parameters())
@@ -1370,7 +1392,7 @@ class TwoStreamControlLDM(LatentDiffusion):
         loss, loss_dict_ = self.p_losses(model_output,t,noise)
         loss_total += loss
         loss_dict.update(loss_dict_)
-
+        '''
         # Generator loss
         t = torch.randint(0, 200, (x.shape[0],), device=self.device).long()
         model_output,noise = self(x, c,t,img_output=True)
@@ -1378,15 +1400,15 @@ class TwoStreamControlLDM(LatentDiffusion):
         loss, loss_dict_ = self.p_losses(model_output,t,noise)
         loss_total += loss
         loss_dict.update(loss_dict_)
-
+    
         loss, loss_dict_ = self.d_losses(model_output,t,noise,optimize_d=False)
         loss_total += loss
         loss_dict.update(loss_dict_)
-        
+        '''
         optimizer_g.zero_grad()
         self.manual_backward(loss_total)
         optimizer_g.step()
-
+        '''
         # Discriminator loss
         loss, loss_dict_ = self.d_losses(model_output,t,noise,optimize_d=True)
         loss_dict.update(loss_dict_)
@@ -1398,7 +1420,7 @@ class TwoStreamControlLDM(LatentDiffusion):
         optimizer_d_left_eye.step()
         optimizer_d_right_eye.step()
         optimizer_d_mouth.step()
-
+        '''
         return loss_dict
     
 
@@ -1609,10 +1631,13 @@ class TwoStreamControlLDM(LatentDiffusion):
             for key in list(ckpt_base['state_dict'].keys()):
                 if "diffusion_model." in key:
                     if 'control_model.control' + key[15:] in self.state_dict().keys():
+                        print('control_model.control' + key[15:],':',ckpt_base['state_dict'][key].shape != self.state_dict()['control_model.control' + key[15:]].shape,ckpt_base['state_dict'][key].shape,self.state_dict()['control_model.control' + key[15:]].shape)
                         if ckpt_base['state_dict'][key].shape != self.state_dict()['control_model.control' + key[15:]].shape:
+                            '''
                             if len(ckpt_base['state_dict'][key].shape) == 1:
                                 dim = 0
                                 control_dim = self.state_dict()['control_model.control' + key[15:]].size(dim)
+                                #print('0:control_model.control' + key[15:],':',control_dim)
                                 ckpt_base['state_dict']['control_model.control' + key[15:]] = torch.cat([
                                     ckpt_base['state_dict'][key],
                                     ckpt_base['state_dict'][key]
@@ -1620,11 +1645,28 @@ class TwoStreamControlLDM(LatentDiffusion):
                             else:
                                 dim = 1
                                 control_dim = self.state_dict()['control_model.control' + key[15:]].size(dim)
+                                #print('1:control_model.control' + key[15:],':',control_dim)
                                 ckpt_base['state_dict']['control_model.control' + key[15:]] = torch.cat([
                                     ckpt_base['state_dict'][key],
                                     ckpt_base['state_dict'][key]
                                 ], dim=dim)[:, :control_dim, ...]
+                            '''
+                            control_w_s = self.state_dict()['control_model.control' + key[15:]].shape
+                            dims = []
+                            for index, each in enumerate(ckpt_base['state_dict'][key].shape):
+                                if each != control_w_s[index]:
+                                    dims.append(control_w_s[index])
+                            weight = ckpt_base['state_dict'][key]
+                            
+                            for index, dim in enumerate(dims):
+                                weight = torch.cat([weight,weight],index)
+                                if index == 0:
+                                    weight = weight[:dim,...]
+                                else:
+                                    weight = weight[:,:dim,...]
+                            ckpt_base['state_dict']['control_model.control' + key[15:]] = weight
                         else:
+                            #print('haha')
                             ckpt_base['state_dict']['control_model.control' + key[15:]] = ckpt_base['state_dict'][key]
 
         res_sync = self.load_state_dict(ckpt_base['state_dict'], strict=False)

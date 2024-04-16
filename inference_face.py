@@ -33,7 +33,7 @@ def parse_args() -> Namespace:
     # model
     # Specify the model ckpt path, and the official model can be downloaded direclty.
     parser.add_argument("--ckpt", type=str, help='Model checkpoint.', default='weights/face_full_v1.ckpt')
-    parser.add_argument("--config", type=str, default='configs/model/cldm_wD.yaml', help='Model config file.')
+    parser.add_argument("--config", type=str, default='configs/model/cldm_twoS.yaml', help='Model config file.')
     parser.add_argument("--reload_swinir", action="store_true")
     parser.add_argument("--swinir_ckpt", type=str, default=None)
 
@@ -98,7 +98,8 @@ def build_diffbir_model(model_config, ckpt, swinir_ckpt=None):
     if swinir_ckpt is not None and not os.path.exists(swinir_ckpt):
         swinir_ckpt = load_file_from_url(swinir_url, weight_root)
     
-    model: ControlLDM = instantiate_from_config(OmegaConf.load(model_config))
+    #model: ControlLDM = instantiate_from_config(OmegaConf.load(model_config))
+    model = instantiate_from_config(OmegaConf.load(model_config))
     load_state_dict(model, torch.load(ckpt), strict=True)
     # reload preprocess model if specified
     if swinir_ckpt is not None:

@@ -19,7 +19,7 @@ params:
   use_ema: false
   sync_path: /lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/checkpoint/v2-1_512-ema-pruned.ckpt
       #  path to the StableDiffusion v 1.5 weights
-  synch_control: false
+  synch_control: true
   ckpt_path_ctr: ~    #  path to the ControlNet-XS weights
   control_mode: canny
   control_stage_config:
@@ -42,6 +42,7 @@ params:
       - 4
       num_heads: 8
       use_spatial_transformer: true
+      use_linear_in_transformer: true
       transformer_depth: 1
       context_dim: 1024
       use_checkpoint: true
@@ -51,7 +52,7 @@ params:
       guiding: encoder_double
       two_stream_mode: cross
       control_model_ratio: 0.2
-      learn_embedding: false
+      learn_embedding: true
       fixed: true
   unet_config:
     target: ldm.modules.diffusionmodules.openaimodel.UNetModel
