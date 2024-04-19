@@ -853,3 +853,4 @@ class Resize(nn.Module):
         else:
             x = torch.nn.functional.interpolate(x, mode=self.mode, align_corners=False, scale_factor=scale_factor)
         return x
+
