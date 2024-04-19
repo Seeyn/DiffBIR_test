@@ -1620,7 +1620,7 @@ class TwoStreamControlLDM(LatentDiffusion):
 
     def load_control_ckpt(self, ckpt_path_ctr):
         ckpt = torch.load(ckpt_path_ctr)
-        self.control_model.load_state_dict(ckpt['state_dict'], strict=False)
+        self.load_state_dict(ckpt['state_dict'], strict=True)
         print(['CONTROL WEIGHTS LOADED'])
 
     def sync_control_weights_from_base_checkpoint(self, path, synch_control=True):
