@@ -20,9 +20,9 @@ lightning:
     accelerator: ddp
     precision: 32
     # Indices of GPUs used for training.
-    gpus: [0]
+    gpus: [0,1]
     # Path to save logs and checkpoints.
-    default_root_dir: /lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/try_twoS_02temb_normal_extratemb
+    default_root_dir: /lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/try_twoS_02temb_normal_extratemb_wD
     # Max number of training steps (batches).
     max_steps: 25001
     # Validation frequency in terms of training steps.

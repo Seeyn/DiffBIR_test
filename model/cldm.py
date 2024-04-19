@@ -1392,7 +1392,7 @@ class TwoStreamControlLDM(LatentDiffusion):
         loss, loss_dict_ = self.p_losses(model_output,t,noise)
         loss_total += loss
         loss_dict.update(loss_dict_)
-        '''
+    
         # Generator loss
         t = torch.randint(0, 200, (x.shape[0],), device=self.device).long()
         model_output,noise = self(x, c,t,img_output=True)
@@ -1404,11 +1404,11 @@ class TwoStreamControlLDM(LatentDiffusion):
         loss, loss_dict_ = self.d_losses(model_output,t,noise,optimize_d=False)
         loss_total += loss
         loss_dict.update(loss_dict_)
-        '''
+    
         optimizer_g.zero_grad()
         self.manual_backward(loss_total)
         optimizer_g.step()
-        '''
+        
         # Discriminator loss
         loss, loss_dict_ = self.d_losses(model_output,t,noise,optimize_d=True)
         loss_dict.update(loss_dict_)
@@ -1420,7 +1420,7 @@ class TwoStreamControlLDM(LatentDiffusion):
         optimizer_d_left_eye.step()
         optimizer_d_right_eye.step()
         optimizer_d_mouth.step()
-        '''
+    
         return loss_dict
     
 

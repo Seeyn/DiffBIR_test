@@ -20,7 +20,7 @@ params:
   sync_path: /lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/checkpoint/v2-1_512-ema-pruned.ckpt
       #  path to the StableDiffusion v 1.5 weights
   synch_control: true
-  ckpt_path_ctr: ~    #  path to the ControlNet-XS weights
+  ckpt_path_ctr: /lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/try_twoS_02temb_normal_extratemb/lightning_logs/version_2/checkpoints/step=24999.ckpt    #  path to the ControlNet-XS weights
   control_mode: canny
   control_stage_config:
     target: model.twoStreamControl.TwoStreamControlNet
