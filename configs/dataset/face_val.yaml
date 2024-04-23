@@ -2,7 +2,7 @@ dataset:
   target: dataset.codeformer.CodeformerDataset
   params:
     # Path to the file list.
-    file_list: /lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/val.list 
+    file_list: /lab/tangb_lab/12132338/BSR/DiffBIR_test/val.list 
     out_size: 512
     crop_type: none
     use_hflip: False

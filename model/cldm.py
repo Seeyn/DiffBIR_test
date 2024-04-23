@@ -30,7 +30,7 @@ from basicsr.losses.gan_loss import *
 from basicsr.losses.basic_loss import *
 from torchvision.ops import roi_align
 from .discriminator import *
-
+from utils.common import instantiate_from_config, load_state_dict
         
 
 class ControlledUnetModel(UNetModel):
@@ -1172,8 +1172,6 @@ class TwoStreamControlLDM(LatentDiffusion):
         self.control_model = instantiate_from_config(control_stage_config)
         if sync_path is not None:
             self.sync_control_weights_from_base_checkpoint(sync_path, synch_control=synch_control)
-        if ckpt_path_ctr is not None:
-            self.load_control_ckpt(ckpt_path_ctr=ckpt_path_ctr)
 
         self.automatic_optimization = False
 
@@ -1200,11 +1198,10 @@ class TwoStreamControlLDM(LatentDiffusion):
         self.preprocess_model = instantiate_from_config(preprocess_config)
         from collections import OrderedDict
         new_state_dict = OrderedDict()
-        for k, v in torch.load('/lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/checkpoint/face_swinir_v1.ckpt').items():
+        for k, v in torch.load('/lab/tangb_lab/12132338/BSR/DiffBIR_test/checkpoint/face_swinir_v1.ckpt').items():
             name = k[7:] # remove `module.`
             new_state_dict[name] = v
         self.preprocess_model.load_state_dict(new_state_dict)
-        frozen_module(self.preprocess_model)
         
         # instantiate condition encoder, since our condition encoder has the same 
         # structure with AE encoder, we just make a copy of AE encoder. please
@@ -1213,6 +1210,11 @@ class TwoStreamControlLDM(LatentDiffusion):
             ("encoder", copy.deepcopy(self.first_stage_model.encoder)), # cond_encoder.encoder
             ("quant_conv", copy.deepcopy(self.first_stage_model.quant_conv)) # cond_encoder.quant_conv
         ]))
+
+        if ckpt_path_ctr is not None:
+            self.load_control_ckpt(ckpt_path_ctr=ckpt_path_ctr)
+
+        frozen_module(self.preprocess_model)
         frozen_module(self.cond_encoder)
 
 
@@ -1620,8 +1622,9 @@ class TwoStreamControlLDM(LatentDiffusion):
 
     def load_control_ckpt(self, ckpt_path_ctr):
         ckpt = torch.load(ckpt_path_ctr)
-        self.load_state_dict(ckpt['state_dict'], strict=True)
-        print(['CONTROL WEIGHTS LOADED'])
+        load_state_dict(self,ckpt,strict=True)
+        #self.load_state_dict(ckpt['state_dict'], strict=True)
+        print(['CONTROL WEIGHTS LOADED',ckpt_path_ctr])
 
     def sync_control_weights_from_base_checkpoint(self, path, synch_control=True):
         ckpt_base = torch.load(path)  # load the base model checkpoints

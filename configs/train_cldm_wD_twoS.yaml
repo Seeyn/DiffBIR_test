@@ -2,9 +2,9 @@ data:
   target: dataset.data_module.BIRDataModule
   params:
     # Path to training set configuration file.
-    train_config: /lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/configs/dataset/face_train.yaml 
+    train_config: /lab/tangb_lab/12132338/BSR/DiffBIR_test/configs/dataset/face_train.yaml 
     # Path to validation set configuration file.
-    val_config: /lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/configs/dataset/face_val.yaml
+    val_config: /lab/tangb_lab/12132338/BSR/DiffBIR_test/configs/dataset/face_val.yaml
 
 model:
   # You can set learning rate in the following configuration file.
@@ -20,9 +20,9 @@ lightning:
     accelerator: ddp
     precision: 32
     # Indices of GPUs used for training.
-    gpus: [0,1]
+    gpus: [0]
     # Path to save logs and checkpoints.
-    default_root_dir: /lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/try_twoS_02temb_normal_extratemb_wD
+    default_root_dir: /lab/tangb_lab/12132338/BSR/DiffBIR_test/try_twoS_02temb_normal_extratemb_wD_extrem
     # Max number of training steps (batches).
     max_steps: 25001
     # Validation frequency in terms of training steps.

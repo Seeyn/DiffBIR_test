@@ -17,10 +17,10 @@ params:
   monitor: val/loss_simple_ema
   scale_factor: 0.18215
   use_ema: false
-  sync_path: /lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/checkpoint/v2-1_512-ema-pruned.ckpt
+  sync_path: /lab/tangb_lab/12132338/BSR/DiffBIR_test/checkpoint/v2-1_512-ema-pruned.ckpt
       #  path to the StableDiffusion v 1.5 weights
   synch_control: true
-  ckpt_path_ctr: /lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/try_twoS_02temb_normal_extratemb/lightning_logs/version_2/checkpoints/step=24999.ckpt    #  path to the ControlNet-XS weights
+  ckpt_path_ctr: /lab/tangb_lab/12132338/BSR/DiffBIR_test/try_twoS_02temb_normal_extratemb/lightning_logs/version_2/checkpoints/step=24999.ckpt    #  path to the ControlNet-XS weights
   control_mode: canny
   control_stage_config:
     target: model.twoStreamControl.TwoStreamControlNet

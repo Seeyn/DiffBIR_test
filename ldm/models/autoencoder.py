@@ -3,16 +3,17 @@ import pytorch_lightning as pl
 import torch.nn.functional as F
 from contextlib import contextmanager
 
-from ldm.modules.diffusionmodules.model import Encoder, Decoder,Decoder_Mix
+from ldm.modules.diffusionmodules.model import Encoder, Decoder#,Decoder_Mix
 from ldm.modules.distributions.distributions import DiagonalGaussianDistribution
 
 from ldm.util import instantiate_from_config
 from ldm.modules.ema import LitEma
-
+'''
 from basicsr.utils import DiffJPEG, USMSharp
 from basicsr.utils.img_process_util import filter2D
 from basicsr.data.transforms import paired_random_crop, triplet_random_crop
 from basicsr.data.degradations import random_add_gaussian_noise_pt, random_add_poisson_noise_pt, random_add_speckle_noise_pt, random_add_saltpepper_noise_pt
+'''
 import random
 
 import torchvision.transforms as transforms
@@ -223,7 +224,7 @@ class IdentityFirstStage(torch.nn.Module):
 
     def forward(self, x, *args, **kwargs):
         return x
-
+'''
 class AutoencoderKLResi(pl.LightningModule):
     def __init__(self,
                  ddconfig,
@@ -675,3 +676,4 @@ class AutoencoderKLResi(pl.LightningModule):
         x = F.conv2d(x, weight=self.colorize)
         x = 2.*(x-x.min())/(x.max()-x.min()) - 1.
         return x
+'''
