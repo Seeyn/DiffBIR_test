@@ -505,7 +505,8 @@ class SpacedSampler:
         x_T: Optional[torch.Tensor]=None,
         cfg_scale: float=1.,
         cond_fn: Optional[Guidance]=None,
-        color_fix_type: str="none"
+        color_fix_type: str="none" ,
+        return_latent: bool = False
     ) -> torch.Tensor:
         self.make_schedule(num_steps=steps)
         
@@ -536,7 +537,9 @@ class SpacedSampler:
                 cfg_scale=cfg_scale, uncond=uncond,
                 cond_fn=cond_fn
             )
-         
+        
+        if return_latent:
+            latent = img
         img_pixel = (self.model.decode_first_stage(img) + 1) / 2
         # apply color correction (borrowed from StableSR)
         if color_fix_type == "adain":
@@ -545,4 +548,8 @@ class SpacedSampler:
             img_pixel = wavelet_reconstruction(img_pixel, cond_img)
         else:
             assert color_fix_type == "none", f"unexpected color fix type: {color_fix_type}"
+
+        if return_latent:
+            return img_pixel,latent
+        
         return img_pixel
