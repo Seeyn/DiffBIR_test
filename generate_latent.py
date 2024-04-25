@@ -240,7 +240,7 @@ def main() -> None:
                 )
 
             for id in range(len(preds)):
-                tmp = {'sr':stage1_preds[id].cpu().detach(),'latent':latents[id],'hq':hq[id]}#,'pred':preds[id]}
+                tmp = {'sr':stage1_preds[id].cpu().detach(),'latent':latents[id],'hq':hq[id],'loc_left_eye':loc_left_eye[id],'loc_right_eye':loc_right_eye[id],'loc_mouth':loc_mouth[id]}#,'pred':preds[id]}
                 name = '%d_%d_%d.pkl'%(epoch,batch_idx,id)
                 output = os.path.join(args.output, name)
                 with open(output,'wb') as f:
