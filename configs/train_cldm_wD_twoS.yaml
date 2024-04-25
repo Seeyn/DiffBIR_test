@@ -22,7 +22,7 @@ lightning:
     # Indices of GPUs used for training.
     gpus: [0]
     # Path to save logs and checkpoints.
-    default_root_dir: /lab/tangb_lab/12132338/BSR/DiffBIR_test/try_twoS_02temb_normal_extratemb_wD_extrem
+    default_root_dir: /lab/tangb_lab/12132338/BSR/DiffBIR_test/try_twoS_02temb_normal_extratemb_wD_extrem_c15k
     # Max number of training steps (batches).
     max_steps: 25001
     # Validation frequency in terms of training steps.

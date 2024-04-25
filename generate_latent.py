@@ -21,6 +21,8 @@ import einops
 from torch.utils.data import DataLoader
 import pickle
 
+from typing import List, Tuple, Optional
+from model.cond_fn import MSEGuidance
 pretrained_models = {
     'general_v1': {
         'ckpt_url': 'https://huggingface.co/lxq007/DiffBIR/resolve/main/general_full_v1.ckpt',
@@ -44,7 +46,7 @@ def process(
     tile_size: int,
     tile_stride: int,
     return_latent = False
-) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+):
     """
     Apply DiffBIR model on a list of low-quality images.
     
@@ -68,7 +70,7 @@ def process(
     """
     n_samples = control_imgs.shape[0]
     sampler = SpacedSampler(model, var_type="fixed_small")
-    
+    control = einops.rearrange(control_imgs, 'b h w c -> b c h w').to(model.device)
     if not disable_preprocess_model:
         control = model.preprocess_model(control)
     model.control_scales = [strength] * 13
@@ -219,33 +221,27 @@ def main() -> None:
     dataset_config = OmegaConf.load("./configs/dataset/face_train.yaml")
     
     dataset = instantiate_from_config(dataset_config['dataset'])
-    test_dataloader = DataLoader(batch_size = 4, shuffle = False, num_workers=16, drop_last = False)
-    for epoch in range(10):
+    test_dataloader = DataLoader(dataset,batch_size = 4, shuffle = False, num_workers=16, drop_last = False)
+    for epoch in range(2):
         for batch_idx, batch in enumerate(test_dataloader):
             # read image
             lq = batch['hint']
             hq = batch['jpg'].permute(0,3,1,2)
-            loc_left_eye = loc_left_eye
-            loc_right_eye = loc_right_eye
-            loc_mouth = loc_mouth
+            loc_left_eye = batch['loc_left_eye']
+            loc_right_eye = batch['loc_right_eye']
+            loc_mouth = batch['loc_mouth']
             
-            try:
-                preds, stage1_preds,latents = process(
+            preds, stage1_preds,latents = process(
                     model, lq, steps=args.steps,
                     strength=1,
                     color_fix_type=args.color_fix_type,
                     disable_preprocess_model=args.disable_preprocess_model,
                     cond_fn=None, tiled=False, tile_size=None, tile_stride=None,return_latent=True
                 )
-            except RuntimeError as e:
-                # Avoid cuda_out_of_memory error.
-                # print(f"{file_path}, error: {e}")
-                print('oops')
-                continue
 
-            for id in len(preds):
-                tmp = {'sr':stage1_preds[id],'latent':latents[id],'hq':hq[id],'pred':preds[id]}
-                name = '%d_%d_%d'%(epoch,batch_idx,id)
+            for id in range(len(preds)):
+                tmp = {'sr':stage1_preds[id].cpu().detach(),'latent':latents[id],'hq':hq[id]}#,'pred':preds[id]}
+                name = '%d_%d_%d.pkl'%(epoch,batch_idx,id)
                 output = os.path.join(args.output, name)
                 with open(output,'wb') as f:
                     pickle.dump(tmp,f)
