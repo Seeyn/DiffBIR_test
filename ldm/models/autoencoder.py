@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 import torch.nn.functional as F
 from contextlib import contextmanager
 
-from ldm.modules.diffusionmodules.model import Encoder, Decoder#,Decoder_Mix
+from ldm.modules.diffusionmodules.model import Encoder, Decoder, Decoder_Mix
 from ldm.modules.distributions.distributions import DiagonalGaussianDistribution
 
 from ldm.util import instantiate_from_config
@@ -11,7 +11,7 @@ from ldm.modules.ema import LitEma
 '''
 from basicsr.utils import DiffJPEG, USMSharp
 from basicsr.utils.img_process_util import filter2D
-from basicsr.data.transforms import paired_random_crop, triplet_random_crop
+from basicsr.data.transforms import paired_random_crop
 from basicsr.data.degradations import random_add_gaussian_noise_pt, random_add_poisson_noise_pt, random_add_speckle_noise_pt, random_add_saltpepper_noise_pt
 '''
 import random
@@ -224,7 +224,7 @@ class IdentityFirstStage(torch.nn.Module):
 
     def forward(self, x, *args, **kwargs):
         return x
-'''
+
 class AutoencoderKLResi(pl.LightningModule):
     def __init__(self,
                  ddconfig,
@@ -406,10 +406,10 @@ class AutoencoderKLResi(pl.LightningModule):
                 self.queue_ptr = self.queue_ptr + b
 
     def get_input(self, batch):
-        input = batch['lq']
-        gt = batch['gt']
+        input = batch['sr']
+        gt = batch['hq']
         latent = batch['latent']
-        sample = batch['sample']
+        # sample = batch['sample']
 
         assert not torch.isnan(latent).any()
 
@@ -419,182 +419,13 @@ class AutoencoderKLResi(pl.LightningModule):
 
         gt = gt * 2.0 - 1.0
         input = input * 2.0 - 1.0
-        sample = sample * 2.0 -1.0
+        # sample = sample * 2.0 -1.0
 
-        return input, gt, latent, sample
-
-    @torch.no_grad()
-    def get_input_synthesis(self, batch, val=False, test_gt=False):
-
-        jpeger = DiffJPEG(differentiable=False).cuda()  # simulate JPEG compression artifacts
-        im_gt = batch['gt'].cuda()
-        if self.use_usm:
-            usm_sharpener = USMSharp().cuda()  # do usm sharpening
-            im_gt = usm_sharpener(im_gt)
-        im_gt = im_gt.to(memory_format=torch.contiguous_format).float()
-        kernel1 = batch['kernel1'].cuda()
-        kernel2 = batch['kernel2'].cuda()
-        sinc_kernel = batch['sinc_kernel'].cuda()
-
-        ori_h, ori_w = im_gt.size()[2:4]
-
-        # ----------------------- The first degradation process ----------------------- #
-        # blur
-        out = filter2D(im_gt, kernel1)
-        # random resize
-        updown_type = random.choices(
-                ['up', 'down', 'keep'],
-                self.configs.degradation['resize_prob'],
-                )[0]
-        if updown_type == 'up':
-            scale = random.uniform(1, self.configs.degradation['resize_range'][1])
-        elif updown_type == 'down':
-            scale = random.uniform(self.configs.degradation['resize_range'][0], 1)
-        else:
-            scale = 1
-        mode = random.choice(['area', 'bilinear', 'bicubic'])
-        out = F.interpolate(out, scale_factor=scale, mode=mode)
-        # add noise
-        gray_noise_prob = self.configs.degradation['gray_noise_prob']
-        if random.random() < self.configs.degradation['gaussian_noise_prob']:
-            out = random_add_gaussian_noise_pt(
-                out,
-                sigma_range=self.configs.degradation['noise_range'],
-                clip=True,
-                rounds=False,
-                gray_prob=gray_noise_prob,
-                )
-        else:
-            out = random_add_poisson_noise_pt(
-                out,
-                scale_range=self.configs.degradation['poisson_scale_range'],
-                gray_prob=gray_noise_prob,
-                clip=True,
-                rounds=False)
-        # JPEG compression
-        jpeg_p = out.new_zeros(out.size(0)).uniform_(*self.configs.degradation['jpeg_range'])
-        out = torch.clamp(out, 0, 1)  # clamp to [0, 1], otherwise JPEGer will result in unpleasant artifacts
-        out = jpeger(out, quality=jpeg_p)
-
-        # ----------------------- The second degradation process ----------------------- #
-        # blur
-        if random.random() < self.configs.degradation['second_blur_prob']:
-            out = filter2D(out, kernel2)
-        # random resize
-        updown_type = random.choices(
-                ['up', 'down', 'keep'],
-                self.configs.degradation['resize_prob2'],
-                )[0]
-        if updown_type == 'up':
-            scale = random.uniform(1, self.configs.degradation['resize_range2'][1])
-        elif updown_type == 'down':
-            scale = random.uniform(self.configs.degradation['resize_range2'][0], 1)
-        else:
-            scale = 1
-        mode = random.choice(['area', 'bilinear', 'bicubic'])
-        out = F.interpolate(
-                out,
-                size=(int(ori_h / self.configs.sf * scale),
-                      int(ori_w / self.configs.sf * scale)),
-                mode=mode,
-                )
-        # add noise
-        gray_noise_prob = self.configs.degradation['gray_noise_prob2']
-        if random.random() < self.configs.degradation['gaussian_noise_prob2']:
-            out = random_add_gaussian_noise_pt(
-                out,
-                sigma_range=self.configs.degradation['noise_range2'],
-                clip=True,
-                rounds=False,
-                gray_prob=gray_noise_prob,
-                )
-        else:
-            out = random_add_poisson_noise_pt(
-                out,
-                scale_range=self.configs.degradation['poisson_scale_range2'],
-                gray_prob=gray_noise_prob,
-                clip=True,
-                rounds=False,
-                )
-
-        # JPEG compression + the final sinc filter
-        # We also need to resize images to desired sizes. We group [resize back + sinc filter] together
-        # as one operation.
-        # We consider two orders:
-        #   1. [resize back + sinc filter] + JPEG compression
-        #   2. JPEG compression + [resize back + sinc filter]
-        # Empirically, we find other combinations (sinc + JPEG + Resize) will introduce twisted lines.
-        if random.random() < 0.5:
-            # resize back + the final sinc filter
-            mode = random.choice(['area', 'bilinear', 'bicubic'])
-            out = F.interpolate(
-                    out,
-                    size=(ori_h // self.configs.sf,
-                          ori_w // self.configs.sf),
-                    mode=mode,
-                    )
-            out = filter2D(out, sinc_kernel)
-            # JPEG compression
-            jpeg_p = out.new_zeros(out.size(0)).uniform_(*self.configs.degradation['jpeg_range2'])
-            out = torch.clamp(out, 0, 1)
-            out = jpeger(out, quality=jpeg_p)
-        else:
-            # JPEG compression
-            jpeg_p = out.new_zeros(out.size(0)).uniform_(*self.configs.degradation['jpeg_range2'])
-            out = torch.clamp(out, 0, 1)
-            out = jpeger(out, quality=jpeg_p)
-            # resize back + the final sinc filter
-            mode = random.choice(['area', 'bilinear', 'bicubic'])
-            out = F.interpolate(
-                    out,
-                    size=(ori_h // self.configs.sf,
-                          ori_w // self.configs.sf),
-                    mode=mode,
-                    )
-            out = filter2D(out, sinc_kernel)
-
-        # clamp and round
-        im_lq = torch.clamp(out, 0, 1.0)
-
-        # random crop
-        gt_size = self.configs.degradation['gt_size']
-        im_gt, im_lq = paired_random_crop(im_gt, im_lq, gt_size, self.configs.sf)
-        self.lq, self.gt = im_lq, im_gt
-
-        self.lq = F.interpolate(
-                self.lq,
-                size=(self.gt.size(-2),
-                      self.gt.size(-1)),
-                mode='bicubic',
-                )
-
-        self.latent = batch['latent'] / 0.18215
-        self.sample = batch['sample'] * 2 - 1.0
-        # training pair pool
-        if not val:
-            self._dequeue_and_enqueue()
-        # sharpen self.gt again, as we have changed the self.gt with self._dequeue_and_enqueue
-        self.lq = self.lq.contiguous()  # for the warning: grad and param do not obey the gradient layout contract
-        self.lq = self.lq*2 - 1.0
-        self.gt = self.gt*2 - 1.0
-
-        self.lq = torch.clamp(self.lq, -1.0, 1.0)
-
-        x = self.lq
-        y = self.gt
-        x = x.to(self.device)
-        y = y.to(self.device)
-
-        if self.test_gt:
-            return y, y, self.latent.to(self.device), self.sample.to(self.device)
-        else:
-            return x, y, self.latent.to(self.device), self.sample.to(self.device)
+        return input, gt, latent #, sample
 
     def training_step(self, batch, batch_idx, optimizer_idx):
-        if self.synthesis_data:
-            inputs, gts, latents, _ = self.get_input_synthesis(batch, val=False)
-        else:
-            inputs, gts, latents, _ = self.get_input(batch)
+
+        inputs, gts, latents = self.get_input(batch)
         reconstructions, posterior = self(inputs, latents)
 
         if optimizer_idx == 0:
@@ -615,7 +446,7 @@ class AutoencoderKLResi(pl.LightningModule):
             return discloss
 
     def validation_step(self, batch, batch_idx):
-        inputs, gts, latents, _ = self.get_input(batch)
+        inputs, gts, latents  = self.get_input(batch)
 
         reconstructions, posterior = self(inputs, latents)
         aeloss, log_dict_ae = self.loss(gts, reconstructions, posterior, 0, self.global_step,
@@ -646,13 +477,11 @@ class AutoencoderKLResi(pl.LightningModule):
     @torch.no_grad()
     def log_images(self, batch, only_inputs=False, **kwargs):
         log = dict()
-        if self.synthesis_data:
-            x, gts, latents, samples = self.get_input_synthesis(batch, val=False)
-        else:
-            x, gts, latents, samples = self.get_input(batch)
+        
+        x, gts, latents = self.get_input(batch)
         x = x.to(self.device)
         latents = latents.to(self.device)
-        samples = samples.to(self.device)
+        # samples = samples.to(self.device)
         if not only_inputs:
             xrec, posterior = self(x, latents)
             if x.shape[1] > 3:
@@ -660,13 +489,13 @@ class AutoencoderKLResi(pl.LightningModule):
                 assert xrec.shape[1] > 3
                 x = self.to_rgb(x)
                 gts = self.to_rgb(gts)
-                samples = self.to_rgb(samples)
+                # samples = self.to_rgb(samples)
                 xrec = self.to_rgb(xrec)
             # log["samples"] = self.decode(torch.randn_like(posterior.sample()))
             log["reconstructions"] = xrec
         log["inputs"] = x
         log["gts"] = gts
-        log["samples"] = samples
+        # log["samples"] = samples
         return log
 
     def to_rgb(self, x):
@@ -676,4 +505,4 @@ class AutoencoderKLResi(pl.LightningModule):
         x = F.conv2d(x, weight=self.colorize)
         x = 2.*(x-x.min())/(x.max()-x.min()) - 1.
         return x
-'''
+
