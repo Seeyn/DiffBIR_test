@@ -418,6 +418,7 @@ class Model(nn.Module):
 
         # downsampling
         hs = [self.conv_in(x)]
+        fea_list = []
         for i_level in range(self.num_resolutions):
             for i_block in range(self.num_res_blocks):
                 h = self.down[i_level].block[i_block](hs[-1], temb)
@@ -519,18 +520,22 @@ class Encoder(nn.Module):
                                         stride=1,
                                         padding=1)
 
-    def forward(self, x):
+    def forward(self, x, return_fea=False):
         # timestep embedding
         temb = None
 
         # downsampling
         hs = [self.conv_in(x)]
+        fea_list = []
         for i_level in range(self.num_resolutions):
             for i_block in range(self.num_res_blocks):
                 h = self.down[i_level].block[i_block](hs[-1], temb)
                 if len(self.down[i_level].attn) > 0:
                     h = self.down[i_level].attn[i_block](h)
                 hs.append(h)
+            if return_fea:
+                if i_level==1 or i_level==2:
+                    fea_list.append(h)
             if i_level != self.num_resolutions-1:
                 hs.append(self.down[i_level].downsample(hs[-1]))
 
@@ -544,6 +549,9 @@ class Encoder(nn.Module):
         h = self.norm_out(h)
         h = nonlinearity(h)
         h = self.conv_out(h)
+
+        if return_fea:
+            return h, fea_list
         return h
 
 

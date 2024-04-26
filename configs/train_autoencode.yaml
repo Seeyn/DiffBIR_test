@@ -1,17 +1,10 @@
 data:
-  target: dataset.stage3.Stage3
+  target: dataset.data_module.BIRDataModule
   params:
-    # Path to the file list.
-    file_list: /lab/tangb_lab/12132338/BSR/DiffBIR_test/temp.list 
-
-  data_loader:
-    batch_size: 8
-    shuffle: true
-    num_workers: 16
-    drop_last: true
-
-  batch_transform:
-    target: dataset.batch_transform.IdentityBatchTransform
+    # Path to training set configuration file.
+    train_config: /lab/tangb_lab/12132338/BSR/DiffBIR_test/configs/dataset/stage3.yaml
+    # Path to validation set configuration file.
+    val_config: /lab/tangb_lab/12132338/BSR/DiffBIR_test/configs/dataset/stage3_val.yaml
 
 model:
   # You can set learning rate in the following configuration file.

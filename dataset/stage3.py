@@ -11,7 +11,7 @@ class Stage3(data.Dataset):
     
     def __init__(
         self,
-        file_list: str,
+        file_list: str
     ) -> "Stage3":
         super(Stage3, self).__init__()
         self.file_list = file_list
@@ -22,7 +22,7 @@ class Stage3(data.Dataset):
         # Shape: (h, w, c); channel order: BGR; image range: [0, 1], float32.
         gt_path = self.paths[index]
         with open(gt_path,'rb') as f:
-            return_dict = pickle.load(gt_path)
+            return_dict = pickle.load(f)
         return return_dict
     
     def __len__(self) -> int:

@@ -2,7 +2,7 @@ import torch
 import pytorch_lightning as pl
 import torch.nn.functional as F
 from contextlib import contextmanager
-
+from model.mixins import ImageLoggerMixin
 from ldm.modules.diffusionmodules.model import Encoder, Decoder, Decoder_Mix
 from ldm.modules.distributions.distributions import DiagonalGaussianDistribution
 
@@ -225,7 +225,7 @@ class IdentityFirstStage(torch.nn.Module):
     def forward(self, x, *args, **kwargs):
         return x
 
-class AutoencoderKLResi(pl.LightningModule):
+class AutoencoderKLResi(pl.LightningModule,ImageLoggerMixin):
     def __init__(self,
                  ddconfig,
                  lossconfig,
@@ -240,6 +240,7 @@ class AutoencoderKLResi(pl.LightningModule):
                  synthesis_data=False,
                  use_usm=False,
                  test_gt=False,
+                 learning_rate=5e-5
                  ):
         super().__init__()
         self.image_key = image_key
@@ -250,6 +251,7 @@ class AutoencoderKLResi(pl.LightningModule):
         self.quant_conv = torch.nn.Conv2d(2*ddconfig["z_channels"], 2*embed_dim, 1)
         self.post_quant_conv = torch.nn.Conv2d(embed_dim, ddconfig["z_channels"], 1)
         self.embed_dim = embed_dim
+        self.learning_rate = learning_rate
         if colorize_nlabels is not None:
             assert type(colorize_nlabels)==int
             self.register_buffer("colorize", torch.randn(3, colorize_nlabels, 1, 1))
@@ -417,8 +419,8 @@ class AutoencoderKLResi(pl.LightningModule):
         gt = gt.to(memory_format=torch.contiguous_format).float()
         latent = latent.to(memory_format=torch.contiguous_format).float() / 0.18215
 
-        gt = gt * 2.0 - 1.0
-        input = input * 2.0 - 1.0
+        #gt = gt * 2.0 - 1.0
+        #input = input * 2.0 - 1.0
         # sample = sample * 2.0 -1.0
 
         return input, gt, latent #, sample
@@ -492,9 +494,9 @@ class AutoencoderKLResi(pl.LightningModule):
                 # samples = self.to_rgb(samples)
                 xrec = self.to_rgb(xrec)
             # log["samples"] = self.decode(torch.randn_like(posterior.sample()))
-            log["reconstructions"] = xrec
+            log["reconstructions"] = (xrec+1)/2
         log["inputs"] = x
-        log["gts"] = gts
+        log["gts"] = (gts + 1)/2.
         # log["samples"] = samples
         return log
 
