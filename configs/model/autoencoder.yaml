@@ -1,7 +1,7 @@
 target: ldm.models.autoencoder.AutoencoderKLResi
 params:
   # for training only
-  # ckpt_path: vqgan_finetune_00011.ckpt
+  ckpt_path: /lab/tangb_lab/12132338/BSR/DiffBIR_test/checkpoint/autoencoder.ckpt
   learning_rate: 5.0e-5
   monitor: "val/rec_loss"
   embed_dim: 4
