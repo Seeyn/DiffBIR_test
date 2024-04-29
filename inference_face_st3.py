@@ -45,9 +45,8 @@ def process(
     cond_fn: Optional[MSEGuidance],
     tiled: bool,
     tile_size: int,
-    tile_stride: int,
-    return_latent = False
-):
+    tile_stride: int
+) -> Tuple[List[np.ndarray], List[np.ndarray]]:
     """
     Apply DiffBIR model on a list of low-quality images.
     
@@ -69,9 +68,11 @@ def process(
             If `disable_preprocess_model` is specified, then preprocess model's outputs is the same 
             as low-quality inputs.
     """
-    n_samples = control_imgs.shape[0]
+    n_samples = len(control_imgs)
     sampler = SpacedSampler(model, var_type="fixed_small")
-    control = einops.rearrange(control_imgs, 'b h w c -> b c h w').to(model.device)
+    control = torch.tensor(np.stack(control_imgs) / 255.0, dtype=torch.float32, device=model.device).clamp_(0, 1)
+    control = einops.rearrange(control, "n h w c -> n c h w").contiguous()
+    
     if not disable_preprocess_model:
         control = model.preprocess_model(control)
     model.control_scales = [strength] * 13
@@ -83,22 +84,12 @@ def process(
     shape = (n_samples, 4, height // 8, width // 8)
     x_T = torch.randn(shape, device=model.device, dtype=torch.float32)
     if not tiled:
-        if return_latent:
-            samples,latents = sampler.sample(
-                steps=steps, shape=shape, cond_img=control,
-                positive_prompt="", negative_prompt="", x_T=x_T,
-                cfg_scale=1.0, cond_fn=cond_fn,
-                color_fix_type=color_fix_type,
-                return_latent=return_latent
-            )
-            latents = [latents[i] for i in range(n_samples)]
-        else:
-            samples = sampler.sample(
-                steps=steps, shape=shape, cond_img=control,
-                positive_prompt="", negative_prompt="", x_T=x_T,
-                cfg_scale=1.0, cond_fn=cond_fn,
-                color_fix_type=color_fix_type,
-                return_latent=return_latent)
+        samples = sampler.sample_cfw(
+            steps=steps, shape=shape, cond_img=control,
+            positive_prompt="", negative_prompt="", x_T=x_T,
+            cfg_scale=1.0, cond_fn=cond_fn,
+            color_fix_type=color_fix_type
+        )
     else:
         samples = sampler.sample_with_mixdiff(
             tile_size=tile_size, tile_stride=tile_stride,
@@ -109,12 +100,11 @@ def process(
         )
     x_samples = samples.clamp(0, 1)
     x_samples = (einops.rearrange(x_samples, "b c h w -> b h w c") * 255).cpu().numpy().clip(0, 255).astype(np.uint8)
-    # control = (einops.rearrange(control, "b c h w -> b h w c") * 255).cpu().numpy().clip(0, 255).astype(np.uint8)
+    control = (einops.rearrange(control, "b c h w -> b h w c") * 255).cpu().numpy().clip(0, 255).astype(np.uint8)
     
     preds = [x_samples[i] for i in range(n_samples)]
     stage1_preds = [control[i] for i in range(n_samples)]
-    if return_latent:
-        return preds,stage1_preds,latents
+    
     return preds, stage1_preds
 
 
