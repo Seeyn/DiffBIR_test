@@ -32,7 +32,7 @@ def parse_args() -> Namespace:
     parser = ArgumentParser()
     # model
     # Specify the model ckpt path, and the official model can be downloaded direclty.
-    parser.add_argument("--ckpt", type=str, help='Model checkpoint.', default='weights/face_full_v1.ckpt')
+    parser.add_argument("--ckpt", type=str, help='Model checkpoint.', default='None')
     parser.add_argument("--config", type=str, default='configs/model/cldm_twoS.yaml', help='Model config file.')
     parser.add_argument("--reload_swinir", action="store_true")
     parser.add_argument("--swinir_ckpt", type=str, default=None)

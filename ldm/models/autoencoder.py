@@ -20,7 +20,7 @@ import torchvision.transforms as transforms
 from .discriminator import *
 from torchvision.ops import roi_align
 from basicsr.losses.gan_loss import *
-
+from basicsr.losses.basic_loss import *
 
 class AutoencoderKL(pl.LightningModule):
     def __init__(self,
@@ -552,10 +552,11 @@ class AutoencoderKLResiWD(pl.LightningModule,ImageLoggerMixin):
         self.net_d_right_eye.train()
         self.net_d_mouth.train()
         self.gan_loss = GANLoss('vanilla',real_label_val=1.0, fake_label_val=0.0,loss_weight = 0.1)
+        self.cri_l1 = L1Loss(loss_weight=1.0, reduction='mean')
 
-        self.net_d_left_eye.load_state_dict[torch.load(left_eye_ckpt)]
-        self.net_d_left_eye.load_state_dict[torch.load(right_eye_ckpt)]
-        self.net_d_left_eye.load_state_dict[torch.load(mouth_ckpt)]
+        self.net_d_left_eye.load_state_dict(torch.load(left_eye_ckpt))
+        self.net_d_left_eye.load_state_dict(torch.load(right_eye_ckpt))
+        self.net_d_left_eye.load_state_dict(torch.load(mouth_ckpt))
 
 
         if colorize_nlabels is not None:
@@ -863,7 +864,6 @@ class AutoencoderKLResiWD(pl.LightningModule,ImageLoggerMixin):
     
 
     def training_step(self, batch, batch_idx ):
-
         inputs, gts, latents = self.get_input(batch)
         reconstructions, posterior = self(inputs, latents)
         self.output = reconstructions
@@ -906,12 +906,13 @@ class AutoencoderKLResiWD(pl.LightningModule,ImageLoggerMixin):
         optimizer_d_left_eye.zero_grad()
         optimizer_d_right_eye.zero_grad()
         optimizer_d_mouth.zero_grad()
-        self.manual_backward(loss)
+        self.manual_backward(loss_total)
         optimizer_d.step()
         optimizer_d_left_eye.step()
         optimizer_d_right_eye.step()
         optimizer_d_mouth.step()
 
+        return self.log_dict
 
         
 

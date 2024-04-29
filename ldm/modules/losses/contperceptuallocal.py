@@ -63,8 +63,6 @@ class LPIPSWithLocalDiscriminator(nn.Module):
                 global_step, last_layer=None, cond=None, split="train",
                 weights=None, return_dic=False):
         
-        self.get_roi_regions()
-        loss_dict = {}
         
         rec_loss = torch.abs(inputs.contiguous() - reconstructions.contiguous())
         if self.perceptual_weight > 0:

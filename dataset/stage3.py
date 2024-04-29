@@ -23,6 +23,7 @@ class Stage3(data.Dataset):
         gt_path = self.paths[index]
         with open(gt_path,'rb') as f:
             return_dict = pickle.load(f)
+        f.close()
         return return_dict
     
     def __len__(self) -> int:

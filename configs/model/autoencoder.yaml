@@ -2,9 +2,9 @@ target: ldm.models.autoencoder.AutoencoderKLResiWD
 params:
   # for training only
   ckpt_path: /lab/tangb_lab/12132338/BSR/DiffBIR_test/checkpoint/autoencoder.ckpt
-  left_eye_ckpt: ~
-  right_eye_ckpt: ~
-  mouth_ckpt: ~
+  left_eye_ckpt: /lab/tangb_lab/12132338/BSR/DiffBIR_test/checkpoint/net_d_left_eye.ckpt
+  right_eye_ckpt: /lab/tangb_lab/12132338/BSR/DiffBIR_test/checkpoint/net_d_right_eye.ckpt
+  mouth_ckpt: /lab/tangb_lab/12132338/BSR/DiffBIR_test/checkpoint/net_d_mouth.ckpt
   learning_rate: 5.0e-5
   monitor: "val/rec_loss"
   embed_dim: 4
@@ -20,7 +20,6 @@ params:
       disc_weight: 0.025
       disc_factor: 1.0
       
-
   ddconfig:
     double_z: true
     z_channels: 4
