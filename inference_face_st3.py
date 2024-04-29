@@ -14,8 +14,15 @@ from utils.file import list_image_files, get_file_name_parts
 from utils.image import auto_resize, pad
 from utils.file import load_file_from_url
 from utils.face_restoration_helper import FaceRestoreHelper
+from model.spaced_sampler import SpacedSampler
+from dataset.codeformer import CodeformerDataset
+from inference import check_device
+import einops
+from torch.utils.data import DataLoader
+import pickle
 
-from inference import process, check_device
+from typing import List, Tuple, Optional
+from model.cond_fn import MSEGuidance
 
 pretrained_models = {
     'general_v1': {
@@ -26,6 +33,89 @@ pretrained_models = {
         'ckpt_url': 'https://huggingface.co/lxq007/DiffBIR/resolve/main/face_full_v1.ckpt'
     }
 }
+
+@torch.no_grad()
+def process(
+    model: ControlLDM,
+    control_imgs: List[np.ndarray],
+    steps: int,
+    strength: float,
+    color_fix_type: str,
+    disable_preprocess_model: bool,
+    cond_fn: Optional[MSEGuidance],
+    tiled: bool,
+    tile_size: int,
+    tile_stride: int,
+    return_latent = False
+):
+    """
+    Apply DiffBIR model on a list of low-quality images.
+    
+    Args:
+        model (ControlLDM): Model.
+        control_imgs (List[np.ndarray]): A list of low-quality images (HWC, RGB, range in [0, 255]).
+        steps (int): Sampling steps.
+        strength (float): Control strength. Set to 1.0 during training.
+        color_fix_type (str): Type of color correction for samples.
+        disable_preprocess_model (bool): If specified, preprocess model (SwinIR) will not be used.
+        cond_fn (Guidance | None): Guidance function that returns gradient to guide the predicted x_0.
+        tiled (bool): If specified, a patch-based sampling strategy will be used for sampling.
+        tile_size (int): Size of patch.
+        tile_stride (int): Stride of sliding patch.
+    
+    Returns:
+        preds (List[np.ndarray]): Restoration results (HWC, RGB, range in [0, 255]).
+        stage1_preds (List[np.ndarray]): Outputs of preprocess model (HWC, RGB, range in [0, 255]). 
+            If `disable_preprocess_model` is specified, then preprocess model's outputs is the same 
+            as low-quality inputs.
+    """
+    n_samples = control_imgs.shape[0]
+    sampler = SpacedSampler(model, var_type="fixed_small")
+    control = einops.rearrange(control_imgs, 'b h w c -> b c h w').to(model.device)
+    if not disable_preprocess_model:
+        control = model.preprocess_model(control)
+    model.control_scales = [strength] * 13
+    
+    if cond_fn is not None:
+        cond_fn.load_target(2 * control - 1)
+    
+    height, width = control.size(-2), control.size(-1)
+    shape = (n_samples, 4, height // 8, width // 8)
+    x_T = torch.randn(shape, device=model.device, dtype=torch.float32)
+    if not tiled:
+        if return_latent:
+            samples,latents = sampler.sample(
+                steps=steps, shape=shape, cond_img=control,
+                positive_prompt="", negative_prompt="", x_T=x_T,
+                cfg_scale=1.0, cond_fn=cond_fn,
+                color_fix_type=color_fix_type,
+                return_latent=return_latent
+            )
+            latents = [latents[i] for i in range(n_samples)]
+        else:
+            samples = sampler.sample(
+                steps=steps, shape=shape, cond_img=control,
+                positive_prompt="", negative_prompt="", x_T=x_T,
+                cfg_scale=1.0, cond_fn=cond_fn,
+                color_fix_type=color_fix_type,
+                return_latent=return_latent)
+    else:
+        samples = sampler.sample_with_mixdiff(
+            tile_size=tile_size, tile_stride=tile_stride,
+            steps=steps, shape=shape, cond_img=control,
+            positive_prompt="", negative_prompt="", x_T=x_T,
+            cfg_scale=1.0, cond_fn=cond_fn,
+            color_fix_type=color_fix_type
+        )
+    x_samples = samples.clamp(0, 1)
+    x_samples = (einops.rearrange(x_samples, "b c h w -> b h w c") * 255).cpu().numpy().clip(0, 255).astype(np.uint8)
+    # control = (einops.rearrange(control, "b c h w -> b h w c") * 255).cpu().numpy().clip(0, 255).astype(np.uint8)
+    
+    preds = [x_samples[i] for i in range(n_samples)]
+    stage1_preds = [control[i] for i in range(n_samples)]
+    if return_latent:
+        return preds,stage1_preds,latents
+    return preds, stage1_preds
 
 
 def parse_args() -> Namespace:

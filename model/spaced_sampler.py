@@ -553,3 +553,65 @@ class SpacedSampler:
             return img_pixel,latent
         
         return img_pixel
+
+
+    @torch.no_grad()
+    def sample_cfw(
+        self,
+        steps: int,
+        shape: Tuple[int],
+        cond_img: torch.Tensor,
+        positive_prompt: str,
+        negative_prompt: str,
+        x_T: Optional[torch.Tensor]=None,
+        cfg_scale: float=1.,
+        cond_fn: Optional[Guidance]=None,
+        color_fix_type: str="none" ,
+        return_latent: bool = False
+    ) -> torch.Tensor:
+        self.make_schedule(num_steps=steps)
+        
+        device = next(self.model.parameters()).device
+        b = shape[0]
+        if x_T is None:
+            img = torch.randn(shape, device=device)
+        else:
+            img = x_T
+        
+        time_range = np.flip(self.timesteps) # [1000, 950, 900, ...]
+        total_steps = len(self.timesteps)
+        iterator = tqdm(time_range, desc="Spaced Sampler", total=total_steps)
+        
+        latent,encfea = self.model.apply_condition_encoder(cond_img)
+        cond = {
+            "c_latent": [latent],
+            "c_crossattn": [self.model.get_learned_conditioning([positive_prompt] * b)]
+        }
+        uncond = {
+            "c_latent": [latent],
+            "c_crossattn": [self.model.get_learned_conditioning([negative_prompt] * b)]
+        }
+        for i, step in enumerate(iterator):
+            ts = torch.full((b,), step, device=device, dtype=torch.long)
+            index = torch.full_like(ts, fill_value=total_steps - i - 1)
+            img = self.p_sample(
+                img, cond, ts, index=index,
+                cfg_scale=cfg_scale, uncond=uncond,
+                cond_fn=cond_fn
+            )
+        
+        if return_latent:
+            latent = img
+        img_pixel = (self.model.decode_first_stage(img,encfea) + 1) / 2
+        # apply color correction (borrowed from StableSR)
+        if color_fix_type == "adain":
+            img_pixel = adaptive_instance_normalization(img_pixel, cond_img)
+        elif color_fix_type == "wavelet":
+            img_pixel = wavelet_reconstruction(img_pixel, cond_img)
+        else:
+            assert color_fix_type == "none", f"unexpected color fix type: {color_fix_type}"
+
+        if return_latent:
+            return img_pixel,latent
+        
+        return img_pixel

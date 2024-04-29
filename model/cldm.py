@@ -1766,17 +1766,17 @@ class TwoStreamControlLDMCFW(LatentDiffusion):
         return eps
 
     def apply_condition_encoder(self, control):
-        c_latent_meanvar = self.cond_encoder(control * 2 - 1)
+        c_latent_meanvar,encfea = self.cond_encoder(control * 2 - 1)
         c_latent = DiagonalGaussianDistribution(c_latent_meanvar).mode() # only use mode
         c_latent = c_latent * self.scale_factor
-        return c_latent
+        return c_latent,encfea
     
     @torch.no_grad()
     def get_unconditional_conditioning(self, N):
         return self.get_learned_conditioning([""] * N)
 
     @torch.no_grad()
-    def decode_first_stage(self, z, predict_cids=False, force_not_quantize=False, hint=None):
+    def decode_first_stage(self, z, enc_fea,predict_cids=False, force_not_quantize=False, hint=None):
         if predict_cids:
             if z.dim() == 4:
                 z = torch.argmax(z.exp(), dim=1).long()
@@ -1785,7 +1785,7 @@ class TwoStreamControlLDMCFW(LatentDiffusion):
 
         z = 1. / self.scale_factor * z
         if hint is None:
-            return self.first_stage_model.decode(z)
+            return self.first_stage_model.decode(z,enc_fea)
         else:
             return self.first_stage_model.decode(z, hint=hint)
 
