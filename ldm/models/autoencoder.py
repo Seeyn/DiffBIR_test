@@ -697,7 +697,7 @@ class AutoencoderKLResiWD(pl.LightningModule,ImageLoggerMixin):
         return dec
 
     def forward(self, input, latent, sample_posterior=True):
-        posterior, enc_fea_lq = self.encode(input)
+        posterior, enc_fea_lq = self.encode(2*input-1)
         dec = self.decode(latent, enc_fea_lq)
         return dec, posterior
 
