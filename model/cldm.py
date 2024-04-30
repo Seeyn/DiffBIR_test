@@ -1766,7 +1766,8 @@ class TwoStreamControlLDMCFW(LatentDiffusion):
         return eps
 
     def apply_condition_encoder(self, control):
-        c_latent_meanvar,encfea = self.first_stage_model.encoder(control * 2 - 1)
+        print(type(self.first_stage_model))
+        c_latent_meanvar,encfea = self.first_stage_model.encoder(control * 2 - 1, return_fea=True)
         c_latent_meanvar = self.first_stage_model.quant_conv(c_latent_meanvar)
         c_latent = DiagonalGaussianDistribution(c_latent_meanvar).mode() # only use mode
         c_latent = c_latent * self.scale_factor
