@@ -20,7 +20,7 @@ params:
   sync_path: /lab/tangb_lab/12132338/BSR/DiffBIR_test/checkpoint/v2-1_512-ema-pruned.ckpt
       #  path to the StableDiffusion v 1.5 weights
   synch_control: false
-  ckpt_path_ctr: ~ #/lab/tangb_lab/12132338/BSR/DiffBIR_test/try_twoS_02temb_normal_extratemb/lightning_logs/version_2/checkpoints/step=24999.ckpt #/lab/tangb_lab/12132338/BSR/DiffBIR_test/try_twoS_02temb_normal_extratemb_wD_extrem/lightning_logs/version_416/checkpoints/step=14999.ckpt #/lab/tangb_lab/12132338/BSR/DiffBIR_test/try_twoS_02temb_normal_extratemb/lightning_logs/version_2/checkpoints/step=24999.ckpt    #  path to the ControlNet-XS weights
+  ckpt_path_ctr: /lab/tangb_lab/12132338/BSR/DiffBIR_test/try_twoS_1temb_normal_extratemb/lightning_logs/version_1682/checkpoints/step=24999.ckpt
   control_mode: canny
   control_stage_config:
     target: model.twoStreamControl.TwoStreamControlNet
@@ -40,7 +40,7 @@ params:
       - 2
       - 4
       - 4
-      num_heads: 8
+      num_head_channels: 64
       use_spatial_transformer: true
       use_linear_in_transformer: true
       transformer_depth: 1
@@ -71,7 +71,7 @@ params:
       - 2
       - 4
       - 4
-      num_heads: 8
+      num_head_channels: 64
       use_spatial_transformer: true
       use_linear_in_transformer: True
       transformer_depth: 1

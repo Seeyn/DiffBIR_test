@@ -881,6 +881,8 @@ class AutoencoderKLResiWD(pl.LightningModule,ImageLoggerMixin):
         self.log_dict(log_dict_ae, prog_bar=False, logger=True, on_step=True, on_epoch=False)
         loss_total += aeloss
         loss, loss_dict_ = self.d_losses(optimize_d=False)
+        if batch_idx <1000:
+            loss *= 0
         self.log_dict(loss_dict_, prog_bar=False, logger=True, on_step=True, on_epoch=False)
         loss_total += loss
         
@@ -899,6 +901,8 @@ class AutoencoderKLResiWD(pl.LightningModule,ImageLoggerMixin):
         self.log_dict(log_dict_disc, prog_bar=False, logger=True, on_step=True, on_epoch=False)
         loss_total += discloss
         loss, loss_dict_ = self.d_losses(optimize_d=True)
+        if batch_idx <1000:
+            loss *= 0
         self.log_dict(loss_dict_, prog_bar=False, logger=True, on_step=True, on_epoch=False)
         loss_total += loss
 

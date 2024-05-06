@@ -15,10 +15,10 @@ params:
   lossconfig:
     target: ldm.modules.losses.LPIPSWithLocalDiscriminator
     params:
-      disc_start: 501
+      disc_start: 1001
       kl_weight: 0
       disc_weight: 0.025
-      disc_factor: 1.0
+      disc_factor: 0.0
       
   ddconfig:
     double_z: true

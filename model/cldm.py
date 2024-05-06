@@ -2138,7 +2138,7 @@ class TwoStreamControlLDMCFW(LatentDiffusion):
 
     def load_control_ckpt(self, ckpt_path_ctr):
         ckpt = torch.load(ckpt_path_ctr)
-        load_state_dict(self,ckpt,strict=False)
+        load_state_dict(self,ckpt,strict= False)
         #self.load_state_dict(ckpt['state_dict'], strict=True)
         print(['CONTROL WEIGHTS LOADED',ckpt_path_ctr])
 
