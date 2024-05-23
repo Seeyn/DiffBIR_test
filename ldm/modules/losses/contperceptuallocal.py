@@ -69,6 +69,20 @@ class LPIPSWithLocalDiscriminator(nn.Module):
             p_loss = self.perceptual_loss(inputs.contiguous(), reconstructions.contiguous())
             rec_loss = rec_loss + self.perceptual_weight * p_loss
 
+        loss = torch.mean(rec_loss)/rec_loss.shape[0]
+        log = {"{}/total_loss".format(split): loss.clone().detach().mean(),
+                       "{}/rec_loss".format(split): rec_loss.detach().mean()
+                       }
+        if return_dic:
+            loss_dic = {}
+            loss_dic["{}/total_loss".format(split)] = loss.clone().detach().mean()
+            loss_dic['rec_loss'.format(split)] = rec_loss.detach().mean()
+
+        if return_dic:
+            return loss, log, loss_dic
+        return loss, log
+
+        '''
         nll_loss = rec_loss / torch.exp(self.logvar) + self.logvar
         weighted_nll_loss = nll_loss
         if weights is not None:
@@ -168,3 +182,4 @@ class LPIPSWithLocalDiscriminator(nn.Module):
                 return d_loss, log, loss_dic
 
             return d_loss, log
+            '''

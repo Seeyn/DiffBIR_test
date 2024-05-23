@@ -2,16 +2,16 @@ data:
   target: dataset.data_module.BIRDataModule
   params:
     # Path to training set configuration file.
-    train_config: /lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/configs/dataset/face_train.yaml 
+    train_config: /lab/tangb_lab/12132338/BSR/DiffBIR_test/configs/dataset/face_train.yaml 
     # Path to validation set configuration file.
-    val_config: /lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/configs/dataset/face_val.yaml
+    val_config: /lab/tangb_lab/12132338/BSR/DiffBIR_test/configs/dataset/face_val.yaml
 
 model:
   # You can set learning rate in the following configuration file.
   config: configs/model/cldm.yaml
   # Path to the checkpoints or weights you want to resume. At the begining, 
   # this should be set to the initial weights created by scripts/make_stage2_init_weight.py.
-  resume: /lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/checkpoint/face_full_v1.ckpt
+  resume: ~ #/lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/checkpoint/face_full_v1.ckpt
 
 lightning:
   seed: 231
@@ -20,9 +20,9 @@ lightning:
     accelerator: ddp
     precision: 32
     # Indices of GPUs used for training.
-    gpus: [0, 1]
+    gpus: [0]
     # Path to save logs and checkpoints.
-    default_root_dir: /lab02/tangb_lab/cse12132338/BSR/DiffBIR_test/reproduction_x0loss
+    default_root_dir: /lab/tangb_lab/12132338/BSR/DiffBIR_test/reproduction_natural_controlnet
     # Max number of training steps (batches).
     max_steps: 25001
     # Validation frequency in terms of training steps.

@@ -316,8 +316,15 @@ class ControlLDM(LatentDiffusion):
         self.learning_rate = learning_rate
         self.control_scales = [1.0] * 13
         
+        self.load_state_dict(torch.load('/lab/tangb_lab/data/checkpoint/v2-1_512-ema-pruned.ckpt')['state_dict'],strict=False)
         # instantiate preprocess module (SwinIR)
         self.preprocess_model = instantiate_from_config(preprocess_config)
+        from collections import OrderedDict
+        new_state_dict = OrderedDict()
+        for k, v in torch.load('/lab/tangb_lab/data/checkpoint/face_swinir_v1.ckpt').items():
+            name = k[7:] # remove `module.`
+            new_state_dict[name] = v
+        self.preprocess_model.load_state_dict(new_state_dict)
         frozen_module(self.preprocess_model)
         
         # instantiate condition encoder, since our condition encoder has the same 
@@ -1166,7 +1173,7 @@ class ControlLDMwLocalDiscriminator(LatentDiffusion):
 class TwoStreamControlLDM(LatentDiffusion):
 
     def __init__(self, control_stage_config, control_key, learning_rate,
-        preprocess_config, sd_locked=True, sync_path=None, synch_control=True,
+        preprocess_config, withD=False, gamma=200, sd_locked=True, sync_path=None, synch_control=True,
                  control_mode='canny', ckpt_path_ctr=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.control_model = instantiate_from_config(control_stage_config)
@@ -1181,7 +1188,7 @@ class TwoStreamControlLDM(LatentDiffusion):
 
         self.learning_rate = learning_rate
         self.control_scales = [1.0] * 13
-        
+        self.withD = withD
 
         self.net_d_left_eye = FacialComponentDiscriminator()
         self.net_d_right_eye = FacialComponentDiscriminator()
@@ -1190,7 +1197,7 @@ class TwoStreamControlLDM(LatentDiffusion):
         self.net_d_right_eye.train()
         self.net_d_mouth.train()
         self.mouths = None
-
+        self.gamma = gamma
         self.gan_loss = GANLoss('vanilla',real_label_val=1.0, fake_label_val=0.0,loss_weight = 0.1)
         self.cri_l1 = L1Loss(loss_weight=1.0, reduction='mean')
         # instantiate preprocess module (SwinIR)
@@ -1198,7 +1205,7 @@ class TwoStreamControlLDM(LatentDiffusion):
         self.preprocess_model = instantiate_from_config(preprocess_config)
         from collections import OrderedDict
         new_state_dict = OrderedDict()
-        for k, v in torch.load('/lab/tangb_lab/12132338/BSR/DiffBIR_test/checkpoint/face_swinir_v1.ckpt').items():
+        for k, v in torch.load('/lab/tangb_lab/data/checkpoint/face_swinir_v1.ckpt').items():
             name = k[7:] # remove `module.`
             new_state_dict[name] = v
         self.preprocess_model.load_state_dict(new_state_dict)
@@ -1395,35 +1402,37 @@ class TwoStreamControlLDM(LatentDiffusion):
         loss_total += loss
         loss_dict.update(loss_dict_)
         
-        '''
+        if self.withD:
         # Generator loss
-        t = torch.randint(0, 200, (x.shape[0],), device=self.device).long()
-        model_output,noise = self(x, c,t,img_output=True)
-
-        loss, loss_dict_ = self.p_losses(model_output,t,noise)
-        loss_total += loss
-        loss_dict.update(loss_dict_)
+            print('gamma:',self.gamma)
+            t = torch.randint(0, self.gamma, (x.shape[0],), device=self.device).long()
+            model_output,noise = self(x, c,t,img_output=True)
+            
+            loss, loss_dict_ = self.p_losses(model_output,t,noise)
+            loss_total += loss
+            loss_dict.update(loss_dict_)
     
-        loss, loss_dict_ = self.d_losses(model_output,t,noise,optimize_d=False)
-        loss_total += loss
-        loss_dict.update(loss_dict_)
-        '''
+            loss, loss_dict_ = self.d_losses(model_output,t,noise,optimize_d=False)
+            loss_total += loss
+            loss_dict.update(loss_dict_)
+            
         optimizer_g.zero_grad()
         self.manual_backward(loss_total)
         optimizer_g.step()
-        '''
+        
+        if self.withD:
         # Discriminator loss
-        loss, loss_dict_ = self.d_losses(model_output,t,noise,optimize_d=True)
-        loss_dict.update(loss_dict_)
+            loss, loss_dict_ = self.d_losses(model_output,t,noise,optimize_d=True)
+            loss_dict.update(loss_dict_)
 
-        optimizer_d_left_eye.zero_grad()
-        optimizer_d_right_eye.zero_grad()
-        optimizer_d_mouth.zero_grad()
-        self.manual_backward(loss)
-        optimizer_d_left_eye.step()
-        optimizer_d_right_eye.step()
-        optimizer_d_mouth.step()
-        '''
+            optimizer_d_left_eye.zero_grad()
+            optimizer_d_right_eye.zero_grad()
+            optimizer_d_mouth.zero_grad()
+            self.manual_backward(loss)
+            optimizer_d_left_eye.step()
+            optimizer_d_right_eye.step()
+            optimizer_d_mouth.step()
+        
         return loss_dict
     
 
@@ -1711,7 +1720,7 @@ class TwoStreamControlLDMCFW(LatentDiffusion):
         self.preprocess_model = instantiate_from_config(preprocess_config)
         from collections import OrderedDict
         new_state_dict = OrderedDict()
-        for k, v in torch.load('/lab/tangb_lab/12132338/BSR/DiffBIR_test/checkpoint/face_swinir_v1.ckpt').items():
+        for k, v in torch.load('/lab/tangb_lab/data/checkpoint/face_swinir_v1.ckpt').items():
             name = k[7:] # remove `module.`
             new_state_dict[name] = v
         self.preprocess_model.load_state_dict(new_state_dict)

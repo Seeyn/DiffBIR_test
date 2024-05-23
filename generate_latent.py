@@ -20,6 +20,8 @@ from inference import check_device
 import einops
 from torch.utils.data import DataLoader
 import pickle
+import torch
+import random
 
 from typing import List, Tuple, Optional
 from model.cond_fn import MSEGuidance
@@ -32,6 +34,15 @@ pretrained_models = {
         'ckpt_url': 'https://huggingface.co/lxq007/DiffBIR/resolve/main/face_full_v1.ckpt'
     }
 }
+def setup_seed(seed):
+     torch.manual_seed(seed)
+     torch.cuda.manual_seed_all(seed)
+     np.random.seed(seed)
+     random.seed(seed)
+     torch.backends.cudnn.deterministic = True
+
+setup_seed(231)
+
 
 @torch.no_grad()
 def process(
@@ -218,7 +229,7 @@ def main() -> None:
         det_model = args.detection_model
         )
 
-    dataset_config = OmegaConf.load("./configs/dataset/face_train.yaml")
+    dataset_config = OmegaConf.load("./configs/dataset/face_train_extrem.yaml")
     
     dataset = instantiate_from_config(dataset_config['dataset'])
     test_dataloader = DataLoader(dataset,batch_size = 4, shuffle = False, num_workers=16, drop_last = False)
@@ -240,7 +251,7 @@ def main() -> None:
                 )
 
             for id in range(len(preds)):
-                tmp = {'sr':stage1_preds[id].cpu().detach(),'latent':latents[id],'hq':hq[id],'pred':preds[id],'loc_left_eye':loc_left_eye[id],'loc_right_eye':loc_right_eye[id],'loc_mouth':loc_mouth[id]}#,'pred':preds[id]}
+                tmp = {'sr':stage1_preds[id].cpu().detach(),'latent':latents[id].cpu().detach(),'hq':hq[id],'pred':preds[id],'loc_left_eye':loc_left_eye[id],'loc_right_eye':loc_right_eye[id],'loc_mouth':loc_mouth[id]}#,'pred':preds[id]}
                 name = '%d_%d_%d.pkl'%(epoch,batch_idx,id)
                 output = os.path.join(args.output, name)
                 with open(output,'wb') as f:

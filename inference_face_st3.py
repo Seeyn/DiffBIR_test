@@ -20,7 +20,7 @@ from inference import check_device
 import einops
 from torch.utils.data import DataLoader
 import pickle
-
+import time
 from typing import List, Tuple, Optional
 from model.cond_fn import MSEGuidance
 
@@ -72,7 +72,7 @@ def process(
     sampler = SpacedSampler(model, var_type="fixed_small")
     control = torch.tensor(np.stack(control_imgs) / 255.0, dtype=torch.float32, device=model.device).clamp_(0, 1)
     control = einops.rearrange(control, "n h w c -> n c h w").contiguous()
-    
+    time_s = time.time() 
     if not disable_preprocess_model:
         control = model.preprocess_model(control)
     model.control_scales = [strength] * 13
@@ -101,7 +101,8 @@ def process(
     x_samples = samples.clamp(0, 1)
     x_samples = (einops.rearrange(x_samples, "b c h w -> b h w c") * 255).cpu().numpy().clip(0, 255).astype(np.uint8)
     control = (einops.rearrange(control, "b c h w -> b h w c") * 255).cpu().numpy().clip(0, 255).astype(np.uint8)
-    
+    print(time.time()-time_s)
+    print(x_samples.shape)
     preds = [x_samples[i] for i in range(n_samples)]
     stage1_preds = [control[i] for i in range(n_samples)]
     

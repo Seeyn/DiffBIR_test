@@ -552,6 +552,7 @@ class AutoencoderKLResiWD(pl.LightningModule,ImageLoggerMixin):
         self.net_d_right_eye.train()
         self.net_d_mouth.train()
         self.gan_loss = GANLoss('vanilla',real_label_val=1.0, fake_label_val=0.0,loss_weight = 0.1)
+        
         self.cri_l1 = L1Loss(loss_weight=1.0, reduction='mean')
 
         self.net_d_left_eye.load_state_dict(torch.load(left_eye_ckpt))
@@ -605,6 +606,7 @@ class AutoencoderKLResiWD(pl.LightningModule,ImageLoggerMixin):
         print(untrainable_list)
 
         self.automatic_optimization = False 
+        self.mouths = None
         # untrainable_list = list(set(trainable_list).difference(set(missing_list)))
         # print('>>>>>>>>>>>>>>>>>untrainable_list>>>>>>>>>>>>>>>>>>>')
         # print(untrainable_list)
@@ -881,9 +883,8 @@ class AutoencoderKLResiWD(pl.LightningModule,ImageLoggerMixin):
         self.log_dict(log_dict_ae, prog_bar=False, logger=True, on_step=True, on_epoch=False)
         loss_total += aeloss
         loss, loss_dict_ = self.d_losses(optimize_d=False)
-        if batch_idx <1000:
-            loss *= 0
         self.log_dict(loss_dict_, prog_bar=False, logger=True, on_step=True, on_epoch=False)
+        self.log("gloss", loss, prog_bar=True, logger=True, on_step=True, on_epoch=True)
         loss_total += loss
         
         optimizer_g.zero_grad()
@@ -894,24 +895,17 @@ class AutoencoderKLResiWD(pl.LightningModule,ImageLoggerMixin):
         # train the discriminator
         loss_total = 0 
 
-        discloss, log_dict_disc = self.loss(gts, reconstructions, posterior, optimize_d=True, global_step=self.global_step,
-                                            last_layer=self.get_last_layer(), split="train")
-
-        self.log("discloss", discloss, prog_bar=True, logger=True, on_step=True, on_epoch=True)
-        self.log_dict(log_dict_disc, prog_bar=False, logger=True, on_step=True, on_epoch=False)
-        loss_total += discloss
         loss, loss_dict_ = self.d_losses(optimize_d=True)
-        if batch_idx <1000:
-            loss *= 0
         self.log_dict(loss_dict_, prog_bar=False, logger=True, on_step=True, on_epoch=False)
+        self.log("dloss", loss, prog_bar=True, logger=True, on_step=True, on_epoch=True)
         loss_total += loss
 
-        optimizer_d.zero_grad()
+        #optimizer_d.zero_grad()
         optimizer_d_left_eye.zero_grad()
         optimizer_d_right_eye.zero_grad()
         optimizer_d_mouth.zero_grad()
         self.manual_backward(loss_total)
-        optimizer_d.step()
+        #optimizer_d.step()
         optimizer_d_left_eye.step()
         optimizer_d_right_eye.step()
         optimizer_d_mouth.step()
@@ -941,11 +935,11 @@ class AutoencoderKLResiWD(pl.LightningModule,ImageLoggerMixin):
 
     def configure_optimizers(self):
         lr = self.learning_rate
-        opt_ae = torch.optim.Adam(list(self.encoder.parameters())+
+        opt_ae = torch.optim.AdamW(list(self.encoder.parameters())+
                                   list(self.decoder.parameters())+
                                   # list(self.quant_conv.parameters())+
                                   list(self.post_quant_conv.parameters()),
-                                  lr=lr, betas=(0.5, 0.9))
+                                  lr=lr)
         opt_disc = torch.optim.Adam(self.loss.discriminator.parameters(),
                                     lr=lr, betas=(0.5, 0.9))
         
@@ -981,6 +975,9 @@ class AutoencoderKLResiWD(pl.LightningModule,ImageLoggerMixin):
         log["inputs"] = x
         log["gts"] = (gts + 1)/2.
         # log["samples"] = samples
+        if self.mouths is not None:
+            log["left_eye"] = (self.left_eyes.detach() +1 )/2
+            log["left_eye_gt"] = (self.left_eyes_gt.detach() +1 )/2
         return log
 
     def to_rgb(self, x):
